@@ -121,8 +121,17 @@ def web(
     port: int = typer.Option(8080, "--port", "-p", help="Port for the WebUI server"),
 ) -> None:
     """Start the WebUI server (FastAPI + React)."""
-    typer.echo(f"WebUI not yet implemented. Would start on port {port}.")
-    typer.echo("Install with: pip install codingkit[web]")
+    try:
+        from codingkit.web.server import serve
+    except ImportError as e:
+        typer.echo(f"Error: WebUI dependencies not installed: {e}", err=True)
+        typer.echo("Install with: pip install codingkit[web]", err=True)
+        raise typer.Exit(1) from e
+
+    typer.echo(f"\n{'=' * 60}")
+    typer.echo(f"  CodingKit WebUI")
+    typer.echo(f"{'=' * 60}")
+    serve(port=port)
 
 
 # ---------------------------------------------------------------------------

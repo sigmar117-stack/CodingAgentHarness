@@ -586,3 +586,55 @@ class TestEdgeCases:
         assert ctx.history[0].result == "fail 1"
         assert ctx.history[1].result == "fail 2"
         assert ctx.history[2].result == "fail 3"
+
+
+# ---------------------------------------------------------------------------
+# Supplementary edge-case tests (T7.1)
+# ---------------------------------------------------------------------------
+
+
+class TestSingleStrategyChain:
+    """StrategyEngine with a custom chain that has only 1 strategy."""
+
+    def test_single_strategy_exhausted_after_three_failures(
+        self, engine: StrategyEngine
+    ) -> None:
+        """Custom chain with 1 strategy → STRATEGY_EXHAUSTED after 3 failures."""
+        custom = ["fix_fast"]
+        ctx = engine.initialize(
+            classification=ClassificationResult(),
+            custom_strategy_chain=custom,
+        )
+        assert ctx.current_strategy_index == 0
+        # 3 failures on the single strategy → index becomes 1, which is >= len(chain)
+        for _ in range(3):
+            ctx = engine.record_attempt(ctx, success=False, result="fail")
+        assert ctx.current_strategy_index == 1
+        assert ctx.current_strategy_index >= len(ctx.strategy_chain)
+        assert ctx.state == CorrectionState.STRATEGY_EXHAUSTED
+
+    def test_single_strategy_can_continue_false_after_exhaustion(
+        self, engine: StrategyEngine
+    ) -> None:
+        """After single-strategy exhaustion, can_continue returns False."""
+        custom = ["fix_fast"]
+        ctx = engine.initialize(
+            classification=ClassificationResult(),
+            custom_strategy_chain=custom,
+        )
+        for _ in range(3):
+            ctx = engine.record_attempt(ctx, success=False, result="fail")
+        assert engine.can_continue(ctx) is False
+
+
+class TestInitializeUnknown:
+    """StrategyEngine.initialize() with unknown classification."""
+
+    def test_initialize_without_classification_uses_default_chain(
+        self, engine: StrategyEngine
+    ) -> None:
+        """initialize() with no classification → uses UNCLASSIFIED chain."""
+        ctx = engine.initialize(session_id="sess-unk")
+        assert ctx.classification.category == FailureCategory.UNCLASSIFIED
+        assert ctx.strategy_chain == STRATEGY_CHAINS[FailureCategory.UNCLASSIFIED]
+        assert ctx.strategy_chain == ["general_correction", "escalate_to_user"]

@@ -63,4 +63,5 @@ addopts = "-ra -q"
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning",
+    'ignore::starlette.exceptions.StarletteDeprecationWarning',
 ]
