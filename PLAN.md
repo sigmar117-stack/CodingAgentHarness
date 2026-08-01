@@ -154,6 +154,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/feedback/validator.py`, `tests/test_validator.py` |
 | **实现要点** | ① 定义 `TestResult` 数据类（`total`, `passed`, `failed`, `errors`, `failures: List[FailureDetail]`, `raw_output`） ② 定义 `FailureDetail` 数据类（`test_name`, `error_type`, `error_message`, `traceback`） ③ 实现 `pytest 的 --json-report` 输出解析 ④ 实现 `pytest 的 --junitxml` 输出解析（作为 fallback） ⑤ 结果为空/超时/异常等边界处理 |
 | **验证步骤** | **失败测试**：① 传入构造的 pytest JSON 输出 → 断言 `TestResult` 字段正确 ② 传入全部通过的测试结果 → 断言 `failed=0` ③ 传入部分失败的测试结果 → 断言 `failed>0` 且 `failures` 列表正确 ④ 传入空输出 → 断言标记为"未知错误" |
+| **状态** | ✅ **已完成** (commit `9574d44`) — TDD 实现，JUnit XML 解析 + 原始输出回退，24 个测试通过 |
 
 **依赖**: T2.1（需要 `run_tests` 工具支持）  
 **可并行**: 否  
@@ -169,6 +170,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/feedback/classifier.py`, `tests/test_classifier.py` |
 | **实现要点** | ① 定义 `FailureCategory` 枚举（8 种类型 + `UNCLASSIFIED`） ② 定义 `ClassificationResult` 数据类（`category: FailureCategory`, `confidence: float`, `summary: str`, `key_info: str`） ③ 实现规则引擎：每个分类对应一组关键词模式 + 优先级 ④ 分类优先级：编译错误 > 类型错误 > import 错误 > 边界条件 > 断言失败 > 死循环 > 超时 > 环境问题 ⑤ 无法匹配时返回 `UNCLASSIFIED` ⑥ 置信度计算：匹配到的关键词数量 / 总关键词数量 |
 | **验证步骤** | **失败测试**：① 传入 `"SyntaxError: invalid syntax"` → 断言 `category == COMPILE_ERROR` ② 传入 `"AssertionError: expected 5, got 4"` → 断言 `category == ASSERTION_ERROR` ③ 传入 `"ModuleNotFoundError: No module named 'numpy'"` → 断言 `category == ENVIRONMENT_ERROR` ④ 传入 `"IndexError: list index out of range"` → 断言 `category == BOUNDARY_ERROR` ⑤ 传入 8 种分类各一条，断言全部正确分类 ⑥ 传入无法分类的错误 → 断言 `category == UNCLASSIFIED` |
+| **状态** | ✅ **已完成** (commit `1293af3`) — TDD 实现，规则引擎 + 8 分类优先级 + 置信度计算，34 个测试通过 |
 
 **依赖**: T3.1  
 **可并行**: 否  
