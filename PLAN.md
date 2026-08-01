@@ -186,6 +186,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/feedback/strategy_engine.py`, `src/codingkit/feedback/correction_state.py`, `tests/test_strategy_engine.py` |
 | **实现要点** | ① 定义 `CorrectionState` 枚举（`ATTEMPTING`, `STRATEGY_EXHAUSTED`, `MAX_RETRIES_REACHED`, `USER_INTERVENTION`, `SUCCEEDED`, `CANCELLED`） ② 定义 `CorrectionContext` 数据类（`session_id`, `turn_id`, `attempt_number`, `current_strategy_index`, `strategy_chain: List[str]`, `history: List[CorrectionAttempt]`, `classification: FailureClassification`） ③ 定义 `CorrectionAttempt` 数据类（`strategy: str`, `result: str`, `success: bool`, `timestamp`） ④ 定义每种失败分类的策略链（见 SPEC §3.3.3） ⑤ 实现状态机核心逻辑： - `next_strategy(context)` → 返回下一个策略或上报信号 - 同一策略连续失败 3 次 → 自动切换到下一策略 - 总失败次数 ≥ 6 次 → 返回 `MAX_RETRIES_REACHED` - 所有策略用尽 → 返回 `STRATEGY_EXHAUSTED` ⑥ 状态机可观测：每次状态变化返回完整上下文（`CorrectionContext`） ⑦ 支持中断恢复：`resume(context)` 从上次状态继续 |
 | **验证步骤** | **失败测试**：① 构造上下文，注入 3 次同一策略失败 → 断言 `current_strategy_index` 增加 ② 构造上下文，注入 6 次总失败 → 断言状态为 `MAX_RETRIES_REACHED` ③ 构造上下文，所有策略用尽 → 断言状态为 `STRATEGY_EXHAUSTED` ④ 注入成功结果 → 断言状态为 `SUCCEEDED` ⑤ 中断后恢复 → 断言从上次索引继续 ⑥ 对每种失败分类，断言策略链不为空 |
+| **状态** | ✅ **已完成** (commit `8349222`) — TDD 实现，42 个测试通过，含状态机、策略链、自动切换、阈值上报、中断恢复 |
 
 **依赖**: T3.2  
 **可并行**: 否  
@@ -201,6 +202,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/feedback/ingester.py`, `tests/test_ingester.py` |
 | **实现要点** | ① 定义 `FeedbackContext` 数据类（`original_code`, `test_results`, `classification`, `correction_history`, `current_strategy`, `user_input`） ② 实现 `build_feedback_prompt(context)` → 生成结构化提示文本 ③ 提示模板包含：原始代码 → 失败信息 → 分类结果 → 已尝试策略 → 各策略结果 → 应尝试的下一策略 ④ 历史过长时自动截断：保留最近的 N 轮 ⑤ 回灌消息格式化为 LLM 能理解的结构（Markdown 或 JSON） |
 | **验证步骤** | **失败测试**：① 传入完整修正历史 → 断言输出包含所有关键信息 ② 传入空历史 → 断言输出基本结构仍存在 ③ 历史过长触发截断 → 断言输出长度在限制内 ④ 输出格式为可解析的结构化文本 |
+| **状态** | ✅ **已完成** (commit `9da2ddb`) — TDD 实现，16 个测试通过，含完整历史/空历史/截断/状态处理 |
 
 **依赖**: T3.3  
 **可并行**: 否  
