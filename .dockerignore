@@ -1,0 +1,38 @@
+# --- Python ---
+__pycache__/
+*.pyc
+
+# --- Git ---
+.git/
+.gitignore
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Testing ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- IDE ---
+.vscode/
+.idea/
+
+# --- Claude / local config ---
+.claude/
+
+# --- Python build artifacts ---
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Tests and demo (not needed for build) ---
+tests/
+demo/
+
+# --- Frontend (node_modules only; src/ is needed in stage 1 for the build,
+#              multi-stage build keeps it out of the final image) ---
+webui/node_modules/

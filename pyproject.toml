@@ -40,14 +40,16 @@ memory = ["chromadb>=0.5"]
 llm = ["anthropic>=0.40", "openai>=1.30"]
 # WebUI backend + static file server.
 web = ["fastapi>=0.110", "uvicorn>=0.29"]
+# All extras combined.
+all = ["codingkit[memory,llm,web]"]
 # Test tooling.
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
 
+[project.scripts]
+codingkit = "codingkit.cli.main:app"
+
 [project.urls]
 Homepage = "https://github.com/codingkit/codingkit"
-
-# The `codingkit` console-script entry point is intentionally NOT declared here;
-# it is added in PLAN T6.2 (PyPI packaging) once codingkit.cli.main:app exists.
 
 [tool.setuptools.dynamic]
 version = { attr = "codingkit.__version__.__version__" }
@@ -63,5 +65,5 @@ addopts = "-ra -q"
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning",
-    'ignore::starlette.exceptions.StarletteDeprecationWarning',
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]
