@@ -23,10 +23,10 @@ Layer 3 ─── Feedback Loop (依赖 T2.1)  ✅
   T3.3 ─── 修正策略引擎（主攻方向）✅
   T3.4 ─── 回灌器           ✅
      │
-Layer 4 ─── Agent Loop (依赖 Layer 2 + 3)
-  T4.1 ─── Agent 主循环
-  T4.2 ─── CLI 实现
-  T4.3 ─── 会话管理
+Layer 4 ─── Agent Loop (依赖 Layer 2 + 3)  ✅
+  T4.1 ─── Agent 主循环       ✅
+  T4.2 ─── CLI 实现           ✅
+  T4.3 ─── 会话管理           ✅
      │
 Layer 5 ─── WebUI (可并行)
   T5.1 ─── FastAPI 后端
@@ -220,6 +220,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/core/agent_loop.py`, `src/codingkit/core/context_builder.py`, `src/codingkit/core/response_parser.py`, `tests/test_agent_loop.py` |
 | **实现要点** | ① 实现 `ContextBuilder`：收集项目文件、记忆、会话历史、工具定义，组装为 LLM 消息 ② 实现 `ResponseParser`：解析 LLM 响应，提取文本回复或工具调用 ③ 实现 `AgentLoop` 主类： - `run(task)` → 启动主循环 - `step()` → 单步执行（用于测试） - `cancel()` → 中断并保存状态 - `resume()` → 恢复中断的会话 ④ 主循环流程： build_context → call_llm → parse_response → if text: output → if tool: guardrail → execute → if test: feedback → repeat ⑤ 停机条件：用户明确完成 / 用户中断 / 达到最大轮次（安全阀） ⑥ 每一步都记录到 SessionStore |
 | **验证步骤** | **失败测试**：① 使用 `MockLLMClient` 注入预定义响应 → 断言主循环按预期执行 ② 注入工具调用响应 → 断言工具被调用 ③ 注入文本回复 → 断言输出给用户 ④ 调用 `cancel()` → 断言状态保存 ⑤ 调用 `resume()` → 断言从上次状态继续 |
+| **状态** | ✅ **已完成** (commit `fa7b068`) — 28 个测试通过，含 ContextBuilder、ResponseParser、AgentLoop 完整实现 |
 
 **依赖**: T1.3, T2.1, T2.2, T2.3, T3.4  
 **可并行**: 否  
@@ -235,6 +236,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/cli/main.py`, `src/codingkit/cli/commands/run.py`, `src/codingkit/cli/commands/config.py`, `src/codingkit/cli/commands/session.py`, `src/codingkit/cli/commands/tool.py`, `src/codingkit/cli/commands/web.py`, `tests/test_cli.py` |
 | **实现要点** | ① 使用 Typer 框架实现 CLI 入口 ② 实现 `run` 命令（调用 AgentLoop） ③ 实现 `config` 命令组（key set/show/delete, method, model list/set） ④ 实现 `session` 命令组（list/show/delete） ⑤ 实现 `tool` 命令组（list/enable/disable） ⑥ 实现 `web` 命令（启动 FastAPI） ⑦ 实现 `init`, `status`, `cancel`, `version` 命令 ⑧ 所有命令提供清晰的帮助信息 |
 | **验证步骤** | **失败测试**：① `codingkit --help` 输出所有命令 ② `codingkit version` 输出版本号 ③ 各命令无效参数 → 输出友好错误提示 |
+| **状态** | ✅ **已完成** (commit `52250ed`) — 26 个测试通过，所有 18 条命令实现 |
 
 **依赖**: T4.1, T1.2  
 **可并行**: 否  
@@ -250,6 +252,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/core/session_manager.py`, `tests/test_session_manager.py` |
 | **实现要点** | ① 实现 `SessionManager` 类的 CRUD 操作 ② 会话持久化到 JSON 文件（`~/.codingkit/sessions/`） ③ 中断时自动保存当前状态 ④ 恢复时重建 `AgentLoop` 上下文 |
 | **验证步骤** | **失败测试**：① 创建会话 → 断言文件存在 ② 列出会话 → 断言包含刚创建的会话 ③ 删除会话 → 断言文件不存在 ④ 中断后恢复 → 断言上下文正确 |
+| **状态** | ✅ **已完成** (commit `4e0ad5f`) — 17 个测试通过，含 CRUD、save/restore、中断保存 |
 
 **依赖**: T4.1  
 **可并行**: 否  
@@ -383,7 +386,7 @@ Phase B: 核心构建（可并行）
 Phase C: 反馈闭环（串行）
   T3.1 → T3.2 → T3.3 → T3.4
          ↓
-Phase D: 主循环
+Phase D: 主循环 ✅
   T4.1 → T4.2 → T4.3
          ↓
 Phase E: WebUI（可并行）
