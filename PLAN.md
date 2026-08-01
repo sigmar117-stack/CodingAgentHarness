@@ -54,6 +54,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `pyproject.toml`, `setup.cfg`, `MANIFEST.in`, `.gitignore`, `README.md`, `src/codingkit/__init__.py`, `src/codingkit/__version__.py`, `src/codingkit/cli/__init__.py`, `src/codingkit/core/__init__.py`, `src/codingkit/tools/__init__.py`, `src/codingkit/governance/__init__.py`, `src/codingkit/feedback/__init__.py`, `src/codingkit/memory/__init__.py`, `src/codingkit/web/__init__.py`, `tests/__init__.py` |
 | **实现要点** | ① 创建 `src/codingkit/` 包结构 ② 配置 `pyproject.toml`，依赖分组如下： - **核心 (core)**：`typer`, `pydantic`, `httpx`, `loguru`, `keyring`, `cryptography` - **可选 (llm)**：`anthropic`, `openai` - **可选 (memory)**：`chromadb` - **可选 (web)**：`fastapi`, `uvicorn` - **开发 (dev)**：`pytest`, `pytest-cov` ③ `[project.scripts]` 入口点：`codingkit = codingkit.cli.main:app` ④ 配置 `.gitignore`（排除 `__pycache__`, `.env`, `credentials.enc`, `*.egg-info`） ⑤ 配置 `pytest.ini` 或 `pyproject.toml` 中的 pytest 配置 |
 | **验证步骤** | ① `pip install -e .` 安装成功 ② `python -c "import codingkit; print(codingkit.__version__)"` 成功 ③ `pytest tests/` 运行（无测试，但框架不报错） |
+| **状态** | ✅ **已完成** (commit `1a988cc`) — 冷启动 agent 自主完成 |
 
 **依赖**: 无  
 **可并行**: 否  
@@ -69,6 +70,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/core/credential_store.py`, `tests/test_credential_store.py` |
 | **实现要点** | ① 定义 `CredentialStore` 抽象基类（`set`, `get`, `delete`, `exists`） ② 实现 `KeychainStore`（使用 `keyring` 库，服务名 `codingkit`） ③ 实现 `EncryptedFileStore`（AES-256-GCM，文件路径 `~/.codingkit/credentials.enc`，主密码由用户输入，使用 `cryptography` 库） ④ 实现 `get_credential_store(method: str)` 工厂函数 ⑤ 错误处理：钥匙串不可用时降级提示 |
 | **验证步骤** | **失败测试**：① 构造 `KeychainStore`，写入后读取，断言值一致 ② 构造 `EncryptedFileStore`，写入后读取，断言值一致 ③ 写入后删除，断言 `exists()` 返回 False |
+| **状态** | ✅ **已完成** (commit `1a988cc`) — 冷启动 agent 自主完成 |
 
 **依赖**: T1.1  
 **可并行**: 否  
@@ -84,6 +86,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/core/llm_client.py`, `src/codingkit/core/llm_factory.py`, `tests/test_llm_client.py` |
 | **实现要点** | ① 定义 `LLMClient` 抽象基类（`generate(messages, tools)` → `LLMResponse`） ② 定义 `LLMResponse` 数据类（含 `content: str`, `tool_calls: List[ToolCall]`, `model: str`, `usage: dict`） ③ 定义 `ToolCall` 数据类（`name: str`, `arguments: dict`） ④ 实现 `ClaudeClient`（调用 anthropic SDK，支持 tool use） ⑤ 实现 `OpenAIClient`（调用 openai SDK，支持 function calling） ⑥ 实现 `MockLLMClient`（从预定义的响应列表中按顺序返回，用于单元测试） ⑦ 实现 `create_llm_client(model: str, api_key: str)` 工厂函数 |
 | **验证步骤** | **失败测试**：① 构造 `MockLLMClient` 并注入预定义响应，断言按顺序返回 ② 构造 `MockLLMClient` 空响应列表，断言返回空 ③ 工厂函数传入无效模型名，断言抛出 ValueError |
+| **状态** | ✅ **已完成** (commit `1a988cc`) — 冷启动 agent 自主完成 |
 
 **依赖**: T1.1  
 **可并行**: 否  
@@ -101,6 +104,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/tools/base.py`, `src/codingkit/tools/read_file.py`, `src/codingkit/tools/write_file.py`, `src/codingkit/tools/edit_file.py`, `src/codingkit/tools/execute_command.py`, `src/codingkit/tools/run_tests.py`, `src/codingkit/tools/search_files.py`, `src/codingkit/tools/search_content.py`, `src/codingkit/tools/install_dependencies.py`, `src/codingkit/tools/delete_file.py`, `src/codingkit/tools/git_operation.py`, `src/codingkit/tools/registry.py`, `tests/test_tools.py` |
 | **实现要点** | ① 定义 `Tool` 抽象基类（`name`, `description`, `parameters`, `risk_level`, `execute(params)`） ② 定义 `RiskLevel` 枚举（`NORMAL`, `DANGEROUS`） ③ 定义 `ToolResult` 数据类（`success: bool`, `output: str`, `error: str | None`） ④ 实现 10 个工具类，每个标注 risk_level ⑤ 实现 `ToolRegistry`（注册所有工具，按名称查找） ⑥ 危险工具：`execute_command`, `install_dependencies`, `delete_file`, `git_operation` 实现时不做拦截，拦截由治理护栏负责 |
 | **验证步骤** | **失败测试**：① 注册所有工具，断言按名称查找返回正确实例 ② 调用 `read_file` 读取存在的文件，断言返回内容 ③ 调用 `read_file` 读取不存在的文件，断言返回错误 ④ 调用 `write_file` 写入后读取，断言内容一致 ⑤ 调用 `run_tests` 对已知测试文件，断言返回结构化结果 ⑥ 查找不存在的工具名，断言返回 None |
+| **状态** | ✅ **已完成** (commit `1a988cc`) — 冷启动 agent 自主完成 |
 
 **依赖**: T1.1  
 **可并行**: T2.2, T2.3  
