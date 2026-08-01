@@ -339,3 +339,51 @@ test_math.py ...                                                       [100%]
 ============================== 3 passed in 0.01s =============================="""
 
 RAW_OUTPUT_EMPTY = ""
+
+
+# ---------------------------------------------------------------------------
+# Supplementary edge-case tests (T7.1)
+# ---------------------------------------------------------------------------
+
+
+class TestParseRawOutputEmptyString:
+    """Empty string input to parse_raw_output."""
+
+    def test_empty_string_returns_zero_total(self) -> None:
+        """Empty string → TestResult with total=0."""
+        result = parse_raw_output("")
+        assert result.total == 0
+        assert result.passed == 0
+        assert result.failed == 1  # One unknown error
+        assert len(result.failures) == 1
+
+    def test_empty_string_unknown_error_type(self) -> None:
+        """Empty string → UnknownError failure detail."""
+        result = parse_raw_output("")
+        assert result.failures[0].error_type == "UnknownError"
+
+
+class TestParseJunitXmlNoTestCases:
+    """JUnit XML with no test cases."""
+
+    NO_CASES_XML = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="pytest" tests="0" failures="0" errors="0" skipped="0" time="0.000">
+  </testsuite>
+</testsuites>"""
+
+    def test_no_test_cases_parses_to_zero(self) -> None:
+        """JUnit XML with no test cases → total=0."""
+        result = parse_junit_xml(self.NO_CASES_XML, raw_output="")
+        assert result.total == 0
+        assert result.passed == 0
+        assert result.failed == 0
+        assert result.errors == 0
+        assert result.failures == []
+
+    def test_no_test_cases_empty_suite_element(self) -> None:
+        """<testsuite> with no <testcase> children → 0 tests."""
+        xml = '<?xml version="1.0" ?><testsuite name="pytest" tests="0" failures="0" errors="0"></testsuite>'
+        result = parse_junit_xml(xml)
+        assert result.total == 0
+        assert result.failures == []

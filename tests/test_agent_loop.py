@@ -517,3 +517,51 @@ class TestEdgeCases:
         # Second run should start fresh with new turn numbering
         # (current behavior: turns keep incrementing — this is fine for testing)
         assert r2.state == LoopState.COMPLETED
+
+
+# ---------------------------------------------------------------------------
+# Supplementary edge-case tests (T7.1)
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyResponseAllEmpty:
+    """AgentLoop with MockLLMClient that returns only empty responses."""
+
+    def test_all_empty_responses_completes_gracefully(
+        self, loop: AgentLoop, mock_llm: MockLLMClient
+    ) -> None:
+        """All responses empty → loop completes without error."""
+        # No responses set → MockLLMClient returns empty responses
+        mock_llm._responses = []
+        result = loop.run("Do something")
+        # The loop should complete without raising
+        assert result.state == LoopState.COMPLETED
+
+    def test_empty_responses_produce_no_summary(
+        self, loop: AgentLoop, mock_llm: MockLLMClient
+    ) -> None:
+        """All empty responses → summary is empty string."""
+        mock_llm._responses = []
+        result = loop.run("Do something")
+        assert result.summary == ""
+
+
+class TestCancelWhenIdle:
+    """AgentLoop.cancel() called when state is IDLE."""
+
+    def test_cancel_idle_does_not_raise(
+        self, loop: AgentLoop
+    ) -> None:
+        """cancel() when state is IDLE → should not raise."""
+        # State is IDLE before any run
+        assert loop.state == LoopState.IDLE
+        result = loop.cancel()
+        assert isinstance(result, LoopResult)
+        assert result.state == LoopState.CANCELLED
+
+    def test_cancel_idle_sets_cancelled_state(
+        self, loop: AgentLoop
+    ) -> None:
+        """cancel() when IDLE → state becomes CANCELLED."""
+        loop.cancel()
+        assert loop.state == LoopState.CANCELLED

@@ -310,3 +310,36 @@ class TestClassifyTestResult:
         results = classify(tr)
         assert len(results) == 1
         assert results[0].category == FailureCategory.UNCLASSIFIED
+
+
+# ---------------------------------------------------------------------------
+# Supplementary edge-case tests (T7.1)
+# ---------------------------------------------------------------------------
+
+
+class TestUnicode:
+    """Unicode and long / mixed-case error messages."""
+
+    def test_unicode_in_error_message(self) -> None:
+        """Error message with Unicode characters → should not crash."""
+        fd = _failure("SyntaxError", "invalid syntax éàüñ 中文")
+        result = classify_failure(fd)
+        assert result.category == FailureCategory.COMPILE_ERROR
+        assert 0.0 < result.confidence <= 1.0
+
+    def test_mixed_case_error_message(self) -> None:
+        """Mixed case "syntaxerror" → case-sensitive matching → UNCLASSIFIED."""
+        fd = _failure("syntaxerror", "invalid syntax")
+        result = classify_failure(fd)
+        # The classifier uses case-sensitive matching, so "syntaxerror" (lowercase)
+        # does not match the "SyntaxError" pattern.
+        assert result.category == FailureCategory.UNCLASSIFIED
+        assert result.confidence == 0.0
+
+    def test_very_long_error_message(self) -> None:
+        """Very long error message (>10000 chars) → should not crash."""
+        long_msg = "SyntaxError: " + "x" * 10001
+        fd = _failure("SyntaxError", long_msg)
+        result = classify_failure(fd)
+        assert result.category == FailureCategory.COMPILE_ERROR
+        assert 0.0 < result.confidence <= 1.0

@@ -6,6 +6,8 @@ invocation isolation.
 
 from __future__ import annotations
 
+from unittest.mock import Mock, patch
+
 from typer.testing import CliRunner
 
 from codingkit.cli.main import app
@@ -213,7 +215,8 @@ class TestTool:
 
 
 class TestWeb:
-    def test_web(self) -> None:
+    @patch("codingkit.web.server.serve")
+    def test_web(self, mock_serve: Mock) -> None:
         result = runner.invoke(app, ["web", "--port", "9090"])
         assert result.exit_code == 0
-        assert "9090" in result.output
+        mock_serve.assert_called_once_with(port=9090)

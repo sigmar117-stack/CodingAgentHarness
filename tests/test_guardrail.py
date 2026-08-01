@@ -221,3 +221,41 @@ class TestApprovalHandler:
                 ToolCall(name="delete_file", arguments={"path": "/etc/hosts"}),
             )
         assert decision == ApprovalDecision.REJECTED
+
+
+# ---------------------------------------------------------------------------
+# Supplementary edge-case tests (T7.1)
+# ---------------------------------------------------------------------------
+
+
+class TestGuardrailEdgeCases:
+    """Guardrail edge cases for empty / non-string inputs."""
+
+    def setup_method(self) -> None:
+        self.guardrail = Guardrail()
+
+    def test_empty_name_and_arguments(self) -> None:
+        """ToolCall with empty name/arguments → should not be dangerous."""
+        action = ToolCall(name="", arguments={})
+        result = self.guardrail.check(action)
+        assert result.is_dangerous is False
+
+    def test_non_string_arguments_integer(self) -> None:
+        """Non-string arguments (integer) → should not crash guardrail."""
+        action = ToolCall(name="execute_command", arguments={"command": 123})
+        result = self.guardrail.check(action)
+        assert result.is_dangerous is False
+
+    def test_non_string_arguments_list(self) -> None:
+        """Non-string arguments (list) → should not crash guardrail."""
+        action = ToolCall(name="execute_command", arguments={"command": ["rm", "-rf", "/"]})
+        result = self.guardrail.check(action)
+        assert result.is_dangerous is False
+
+    def test_suggested_safe_alternative_field(self) -> None:
+        """GuardrailResult.suggested_safe_alternative is accessible and None for known dangerous patterns."""
+        action = ToolCall(name="execute_command", arguments={"command": "rm -rf /"})
+        result = self.guardrail.check(action)
+        assert result.is_dangerous is True
+        # suggested_safe_alternative is defined but not yet populated
+        assert result.suggested_safe_alternative is None

@@ -4,7 +4,9 @@ The ``ApprovalHandler`` implements a human-in-the-loop (HITL) approval flow
 for dangerous actions.  It presents the action to the user, accepts one of
 three decisions, and returns the result.
 
-Decision flow::
+Two modes are supported:
+
+**CLI mode** (default) — prompts on the terminal via ``input()``::
 
     Prompt: "Approve this action? [y]es / [n]o / [m]odify"
         y / yes  → APPROVED
@@ -13,6 +15,10 @@ Decision flow::
         <empty>  → REJECTED
         <other>  → retry prompt
         <timeout>→ REJECTED (auto-deny)
+
+**Remote mode** — used by the WebUI.  A callback is set via
+``set_remote_handler()`` and the handler waits on a ``threading.Event``
+for the frontend to submit its decision via ``set_remote_decision()``.
 """
 
 from __future__ import annotations
@@ -21,7 +27,7 @@ import sys
 import threading
 from datetime import timedelta
 from enum import Enum
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 from codingkit.core.llm_client import ToolCall
 
@@ -49,6 +55,13 @@ class ApprovalDecision(str, Enum):
 class ApprovalHandler:
     """Human-in-the-loop approval state machine.
 
+    Supports two modes:
+
+    * **CLI mode** (default): prompts on the terminal via ``input()``.
+    * **Remote mode**: call ``set_remote_handler(callback)`` to push
+      approval requests to a WebUI, then call ``set_remote_decision()``
+      from the REST endpoint.
+
     Args:
         timeout: Maximum time to wait for user input before auto-denying.
             Defaults to 120 seconds.
@@ -56,6 +69,12 @@ class ApprovalHandler:
 
     def __init__(self, timeout: timedelta = timedelta(seconds=120)) -> None:
         self._timeout = timeout
+        self._remote_callback: Optional[Callable[[ToolCall], None]] = None
+        self._decision_event = threading.Event()
+        self._decision: Tuple[ApprovalDecision, Optional[dict[str, Any]]] = (
+            ApprovalDecision.REJECTED,
+            None,
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -66,12 +85,18 @@ class ApprovalHandler:
     ) -> Tuple[ApprovalDecision, Optional[dict[str, Any]]]:
         """Present *action* to the user and return the decision.
 
+        If a remote callback is set, the request is pushed asynchronously
+        and this method blocks until ``set_remote_decision()`` is called
+        or the timeout expires.
+
         Returns:
             A tuple of ``(ApprovalDecision, modified_params)``.
             ``modified_params`` is ``None`` unless the decision is ``MODIFIED``.
         """
-        self._display_action(action)
+        if self._remote_callback is not None:
+            return self._request_remote(action)
 
+        self._display_action(action)
         decision, modified_params = self._read_with_timeout(action)
 
         if decision == ApprovalDecision.MODIFIED and modified_params is not None:
@@ -79,9 +104,53 @@ class ApprovalHandler:
 
         return decision, None
 
+    def set_remote_handler(
+        self, callback: Callable[[ToolCall], None]
+    ) -> None:
+        """Enable remote approval mode.
+
+        When set, ``request_approval()`` will call *callback* with the
+        action and then block until ``set_remote_decision()`` is called.
+
+        Set *callback* to ``None`` to revert to CLI mode.
+        """
+        self._remote_callback = callback
+
+    def set_remote_decision(
+        self,
+        decision: ApprovalDecision,
+        modified_params: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Submit a remote decision (called from a REST endpoint)."""
+        self._decision = (decision, modified_params)
+        self._decision_event.set()
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _request_remote(
+        self, action: ToolCall
+    ) -> Tuple[ApprovalDecision, Optional[dict[str, Any]]]:
+        """Push the approval request via the remote callback and wait for a decision."""
+        self._decision_event.clear()
+        if self._remote_callback:
+            self._remote_callback(action)
+
+        # Wait for the decision with a timeout
+        timeout_sec = self._timeout.total_seconds()
+        if timeout_sec > 0:
+            self._decision_event.wait(timeout_sec)
+
+        if not self._decision_event.is_set():
+            # Timeout — auto-deny
+            return ApprovalDecision.REJECTED, None
+
+        return self._decision
 
     def _display_action(self, action: ToolCall) -> None:
         """Print a human-readable description of the action."""
