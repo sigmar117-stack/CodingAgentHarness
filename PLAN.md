@@ -120,6 +120,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `src/codingkit/governance/guardrail.py`, `src/codingkit/governance/approval.py`, `tests/test_guardrail.py` |
 | **实现要点** | ① 实现 `Guardrail` 类：`check(action: ToolCall)` → `GuardrailResult` ② 定义 `GuardrailResult` 数据类（`is_dangerous: bool`, `risk_reason: str`, `suggested_safe_alternative: str | None`） ③ 危险动作规则：匹配工具名称（4 个危险工具）+ 参数模式（如 `rm -rf /`, `sudo` 等关键词） ④ 实现 `ApprovalHandler` 类：`request_approval(action)` → `ApprovalDecision`（y/n/m） ⑤ 定义 `ApprovalDecision` 枚举（`APPROVED`, `REJECTED`, `MODIFIED`） ⑥ `MODIFIED` 时返回用户修改后的参数 ⑦ 审批超时（默认 120 秒）→ 自动否决 |
 | **验证步骤** | **失败测试**：① 传入危险命令 `Action(command="rm -rf /")` → 断言 `is_dangerous=True` ② 传入普通命令 `Action(command="ls -la")` → 断言 `is_dangerous=False` ③ 传入危险工具 `Action(name="delete_file", params={"path": "/etc"})` → 断言 `is_dangerous=True` ④ Mock 用户输入 `y` → 断言 `ApprovalDecision.APPROVED` ⑤ Mock 用户输入 `n` → 断言 `ApprovalDecision.REJECTED` ⑥ Mock 用户输入 `m` + 修改内容 → 断言 `ApprovalDecision.MODIFIED` 且返回修改后的参数 |
+| **状态** | ✅ **已完成** (commit `69bf37e`) — subagent 在独立 worktree 中 TDD 实现，23 个测试通过 |
 
 **依赖**: T1.1  
 **可并行**: T2.1, T2.3  
@@ -139,7 +140,7 @@ Layer 7 ─── Testing & Demo
 **依赖**: T1.1  
 **可并行**: T2.1, T2.2  
 **预估时间**: 5 分钟  
-**状态**: &#10004; **已完成** (commit `e0d7225`) — TDD 实现，27 个测试通过
+**状态**: ✅ **已完成** (commit `dfabba3`) — subagent 在独立 worktree 中 TDD 实现，27 个测试通过
 
 ---
 
