@@ -17,11 +17,11 @@ Layer 1 ─── Foundation
 Layer 2 ─── Core (可并行)
   T2.1 ─── 工具实现       T2.2 ─── 治理护栏    T2.3 ─── 记忆管理
      │                       │                      │
-Layer 3 ─── Feedback Loop (依赖 T2.1)
-  T3.1 ─── 校验器
-  T3.2 ─── 失败分类器
-  T3.3 ─── 修正策略引擎（主攻方向）
-  T3.4 ─── 回灌器
+Layer 3 ─── Feedback Loop (依赖 T2.1)  ✅
+  T3.1 ─── 校验器           ✅
+  T3.2 ─── 失败分类器        ✅
+  T3.3 ─── 修正策略引擎（主攻方向）✅
+  T3.4 ─── 回灌器           ✅
      │
 Layer 4 ─── Agent Loop (依赖 Layer 2 + 3)
   T4.1 ─── Agent 主循环
@@ -361,6 +361,7 @@ Layer 7 ─── Testing & Demo
 | **涉及文件** | `demo/guardrail_demo.py`, `demo/feedback_demo.py`, `demo/strategy_engine_demo.py`, `demo/run_all_demo.sh` |
 | **实现要点** | ① **治理护栏演示**：传入危险命令 `rm -rf /` → 断言拦截；传入普通命令 `ls` → 断言放行 ② **反馈闭环演示**：构造一个"断言失败"的测试结果 → 通过分类器分类 → 修正策略引擎决策 → 断言状态机走向"尝试修正" ③ **重点维度演示**：构造多轮修正历史 → 断言状态机在 3 次同策略失败后自动切换，6 次总失败后上报人工 ④ 三个演示均可独立运行，不依赖真实 LLM |
 | **验证步骤** | ① `python demo/guardrail_demo.py` 输出预期结果 ② `python demo/feedback_demo.py` 输出预期结果 ③ `python demo/strategy_engine_demo.py` 输出预期结果 ④ `bash demo/run_all_demo.sh` 全部通过 |
+| **状态** | ✅ **已完成** (commit `ce48f9d`) — 3 个独立演示脚本 + PowerShell/Bash 运行脚本，全通过 |
 
 **依赖**: T7.1  
 **可并行**: 否  
