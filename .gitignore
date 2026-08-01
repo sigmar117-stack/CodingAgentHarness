@@ -41,3 +41,7 @@ logs/
 .idea/
 *.swp
 .claude/
+
+# --- Frontend build ---
+webui/node_modules/
+webui/dist/
