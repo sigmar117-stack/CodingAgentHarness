@@ -23,15 +23,94 @@ pip install -e ".[all,dev]"
 
 ## 使用
 
-```bash
-# CLI
-codingkit run "Write a test for the calculator"
-codingkit web          # 启动 WebUI（http://localhost:8080）
-codingkit --help       # 查看全部 19 条命令
+### 快速上手
 
-# Docker
+```bash
+codingkit init                              # 初始化当前目录（生成 .codingkit/）
+codingkit config key set                    # 录入 API Key（隐藏输入，不落盘明文）
+codingkit config model set claude-sonnet-5  # 设默认模型
+codingkit run "Write a test for the calculator"
+codingkit web                               # 启动 WebUI（http://localhost:8080）
+```
+
+### Docker
+
+```bash
 docker build -t codingkit .
-docker run -it codingkit --help
+docker run -it -v ~/.codingkit:/root/.codingkit -v "$PWD:/workspace" codingkit --help
+```
+
+### 完整命令参考（19 条）
+
+每条命令都可用 `codingkit <command> --help` 查看详细帮助。
+
+#### 顶层命令（6 条）
+
+| 命令 | 用法 | 说明 |
+|------|------|------|
+| `init` | `codingkit init` | 在当前目录初始化 CodingKit（生成 `.codingkit/` 配置） |
+| `run` | `codingkit run "<task>" [--plan-only]` | 跑一个任务；`--plan-only` 只生成计划不执行 |
+| `web` | `codingkit web [-p/--port 8080]` | 启动 WebUI（FastAPI + React），默认绑定 `127.0.0.1:8080` |
+| `status` | `codingkit status` | 显示当前配置、工具启用数、最近一次会话 |
+| `cancel` | `codingkit cancel` | `run` 在前台运行，无后台任务可取消——命令会诚实说明这一点 |
+| `version` | `codingkit version` | 显示版本号 |
+
+#### config 子命令（7 条）
+
+| 命令 | 用法 | 说明 |
+|------|------|------|
+| `config status` | `codingkit config status` | 显示当前配置（模型、凭据后端、禁用工具等） |
+| `config method` | `codingkit config method <keychain\|file>` | 切换凭据存储后端，持久化到 `config.yaml` |
+| `config key set` | `codingkit config key set` | 录入/覆盖 API Key（隐藏输入，不落盘明文） |
+| `config key show` | `codingkit config key show` | 只显示"已配置/未配置"，**绝不回显明文** |
+| `config key delete` | `codingkit config key delete` | 删除已配置的 Key（需确认） |
+| `config model list` | `codingkit config model list` | 列出可选 LLM 模型 |
+| `config model set` | `codingkit config model set <model_name>` | 设默认模型，持久化到 `config.yaml` |
+
+#### session 子命令（3 条）
+
+| 命令 | 用法 | 说明 |
+|------|------|------|
+| `session list` | `codingkit session list` | 列出所有会话 |
+| `session show` | `codingkit session show <session_id>` | 查看某会话详情（含修正/反馈状态机恢复后的状态） |
+| `session delete` | `codingkit session delete <session_id>` | 删除某会话 |
+
+#### tool 子命令（3 条）
+
+| 命令 | 用法 | 说明 |
+|------|------|------|
+| `tool list` | `codingkit tool list` | 列出全部工具及其启用/禁用状态（✅/❌） |
+| `tool enable` | `codingkit tool enable <tool_name>` | 启用某工具，持久化到 `config.yaml` |
+| `tool disable` | `codingkit tool disable <tool_name>` | 禁用某工具；禁用后从 LLM 工具定义中剔除、执行时拒绝（优先于护栏审批） |
+
+> SPEC §3.1 要求 18 条命令，本项目额外提供 `config status` 共 19 条。
+
+### 典型工作流
+
+```bash
+# 1. 初始化 + 配置凭据与模型
+codingkit init
+codingkit config method keychain          # 或 file（无桌面环境时）
+codingkit config key set
+codingkit config model set claude-sonnet-5
+
+# 2. 跑一个任务（前台，多轮自我修正）
+codingkit run "Add a multiply function to calc.py with tests"
+
+# 3. 只生成计划，不动文件
+codingkit run "Refactor the validator" --plan-only
+
+# 4. 查看历史会话
+codingkit session list
+codingkit session show <session_id>
+
+# 5. 禁用危险工具后跑任务
+codingkit tool disable delete_file
+codingkit tool list                         # 确认状态
+codingkit run "..."                         # delete_file 不再出现在工具定义里
+
+# 6. 启动 WebUI 看板
+codingkit web
 ```
 
 ## 凭据安全配置
