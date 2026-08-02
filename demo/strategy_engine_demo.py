@@ -10,17 +10,25 @@ Demonstrates the key state machine behaviors:
 No real LLM required — this is a deterministic demonstration.
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+# Render emoji/box-drawing output on any console without crashing
+# (Windows GBK consoles otherwise raise UnicodeEncodeError on 📌/✅).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
 from codingkit.feedback.classifier import ClassificationResult, FailureCategory
-from codingkit.feedback.correction_state import CorrectionState
+from codingkit.feedback.correction_state import CorrectionContext, CorrectionState
 from codingkit.feedback.strategy_engine import StrategyEngine
 
 
-def print_state(engine: StrategyEngine, ctx: "CorrectionContext", label: str) -> None:
+def print_state(engine: StrategyEngine, ctx: CorrectionContext, label: str) -> None:
     summary = engine.status_summary(ctx)
     print(f"  [{label}]")
     print(f"    State: {summary['state']}")
@@ -62,7 +70,7 @@ def main() -> None:
     for i in range(3):
         strategy = engine.next_strategy(ctx)
         print(f"  Attempt {i+1}: executing '{strategy}'")
-        ctx = engine.record_attempt(ctx, success=False, result=f"Failed: syntax error persists")
+        ctx = engine.record_attempt(ctx, success=False, result="Failed: syntax error persists")
         print_state(engine, ctx, f"After attempt {i+1}")
 
     assert ctx.current_strategy_index == 1, "FAIL: Should have switched to strategy 1"
@@ -84,7 +92,7 @@ def main() -> None:
             print(f"  No strategy returned — state: {ctx.state.value}")
             break
         print(f"  Attempt {i+4}: executing '{strategy}'")
-        ctx = engine.record_attempt(ctx, success=False, result=f"Failed: still broken")
+        ctx = engine.record_attempt(ctx, success=False, result="Failed: still broken")
         print_state(engine, ctx, f"After attempt {i+4}")
 
     assert ctx.state == CorrectionState.MAX_RETRIES_REACHED, \
@@ -101,7 +109,7 @@ def main() -> None:
 
     ctx = engine.resume(ctx)
     print(f"  After resume: state = {ctx.state.value}")
-    print(f"  (The process can now continue with new strategies)")
+    print("  (The process can now continue with new strategies)")
     print()
 
     assert ctx.state == CorrectionState.ATTEMPTING

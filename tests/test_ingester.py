@@ -18,7 +18,6 @@ import pytest
 
 from codingkit.feedback.classifier import ClassificationResult, FailureCategory
 from codingkit.feedback.correction_state import (
-    CorrectionAttempt,
     CorrectionContext,
     CorrectionState,
 )
@@ -29,7 +28,6 @@ from codingkit.feedback.ingester import (
 )
 from codingkit.feedback.strategy_engine import StrategyEngine
 from codingkit.feedback.validator import FailureDetail, TestResult
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

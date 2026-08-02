@@ -19,7 +19,6 @@ from codingkit.feedback.classifier import (
 )
 from codingkit.feedback.validator import FailureDetail, TestResult
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

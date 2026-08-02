@@ -17,15 +17,12 @@ Command groups::
 
 from __future__ import annotations
 
-import sys
-from typing import Optional
-
 import typer
 
 from codingkit.__version__ import __version__
-from codingkit.core.agent_loop import AgentLoop, LoopState
+from codingkit.core.agent_loop import AgentLoop
 from codingkit.core.llm_client import MockLLMClient
-from codingkit.tools.registry import ToolRegistry, default_registry
+from codingkit.tools.registry import default_registry
 
 # ---------------------------------------------------------------------------
 # Main app
@@ -46,7 +43,6 @@ app = typer.Typer(
 @app.command()
 def init() -> None:
     """Initialize CodingKit in the current directory."""
-    import os
     from pathlib import Path
 
     config_dir = Path(".codingkit")
@@ -80,7 +76,7 @@ def run(
         task = task[:10000]
 
     typer.echo(f"\n{'=' * 60}")
-    typer.echo(f"  CodingKit — Running task")
+    typer.echo("  CodingKit — Running task")
     typer.echo(f"{'=' * 60}")
     typer.echo(f"  Task: {task[:200]}{'...' if len(task) > 200 else ''}")
     typer.echo()
@@ -129,7 +125,7 @@ def web(
         raise typer.Exit(1) from e
 
     typer.echo(f"\n{'=' * 60}")
-    typer.echo(f"  CodingKit WebUI")
+    typer.echo("  CodingKit WebUI")
     typer.echo(f"{'=' * 60}")
     serve(port=port)
 
@@ -147,8 +143,8 @@ def config_callback() -> None:
     """Configuration commands."""
 
 
-@config_app.command()
-def status() -> None:
+@config_app.command("status")
+def config_status() -> None:
     """Show current configuration."""
     typer.echo("Configuration:")
     typer.echo("  default_model: claude-sonnet-5")
@@ -161,8 +157,8 @@ key_app = typer.Typer(help="Manage API keys")
 config_app.add_typer(key_app, name="key")
 
 
-@key_app.command()
-def set() -> None:
+@key_app.command("set")
+def key_set() -> None:
     """Set (or overwrite) an API key."""
     key = typer.prompt("Enter API key", hide_input=True)
     if not key:
@@ -186,8 +182,8 @@ def set() -> None:
             raise typer.Exit(1)
 
 
-@key_app.command()
-def show() -> None:
+@key_app.command("show")
+def key_show() -> None:
     """Show whether an API key is configured (never displays the key itself)."""
     from codingkit.core.credential_store import get_credential_store
 
@@ -201,8 +197,8 @@ def show() -> None:
         typer.echo("ℹ Could not check API key status.")
 
 
-@key_app.command()
-def delete() -> None:
+@key_app.command("delete")
+def key_delete() -> None:
     """Delete the configured API key."""
     from codingkit.core.credential_store import get_credential_store
 
@@ -248,8 +244,8 @@ model_app = typer.Typer(help="Manage LLM models")
 config_app.add_typer(model_app, name="model")
 
 
-@model_app.command()
-def list() -> None:
+@model_app.command("list")
+def model_list() -> None:
     """List available LLM models."""
     models = {
         "Anthropic Claude": ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5"],
@@ -265,8 +261,8 @@ def list() -> None:
     typer.echo("Use `codingkit config model set <name>` to set the default.")
 
 
-@model_app.command()
-def set(
+@model_app.command("set")
+def model_set(
     model_name: str = typer.Argument(..., help="Model name to set as default"),
 ) -> None:
     """Set the default LLM model."""
@@ -289,8 +285,8 @@ session_app = typer.Typer(help="Manage sessions")
 app.add_typer(session_app, name="session")
 
 
-@session_app.command()
-def list() -> None:
+@session_app.command("list")
+def session_list() -> None:
     """List all sessions."""
     from codingkit.memory.session_store import SessionStore
 
@@ -310,8 +306,8 @@ def list() -> None:
         typer.echo(f"{sid:<40} {created:<25} {status:<15} {task}")
 
 
-@session_app.command()
-def show(
+@session_app.command("show")
+def session_show(
     session_id: str = typer.Argument(..., help="Session ID to show"),
 ) -> None:
     """Show details for a specific session."""
@@ -333,8 +329,8 @@ def show(
             typer.echo(f"  {key}: {value}")
 
 
-@session_app.command()
-def delete(
+@session_app.command("delete")
+def session_delete(
     session_id: str = typer.Argument(..., help="Session ID to delete"),
 ) -> None:
     """Delete a session."""
@@ -359,8 +355,8 @@ tool_app = typer.Typer(help="Manage tools")
 app.add_typer(tool_app, name="tool")
 
 
-@tool_app.command()
-def list() -> None:
+@tool_app.command("list")
+def tool_list() -> None:
     """List all available tools."""
     registry = default_registry()
     tools = registry.list_all()
@@ -408,10 +404,10 @@ def disable(
 def status() -> None:
     """Show current agent status."""
     typer.echo("CodingKit Status:")
-    typer.echo(f"  State: idle")
+    typer.echo("  State: idle")
     typer.echo(f"  Version: {__version__}")
-    typer.echo(f"  Tools: 10 registered")
-    typer.echo(f"  Use `codingkit run <task>` to start a task.")
+    typer.echo("  Tools: 10 registered")
+    typer.echo("  Use `codingkit run <task>` to start a task.")
 
 
 @app.command()

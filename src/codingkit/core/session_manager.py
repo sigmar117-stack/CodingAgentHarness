@@ -11,17 +11,13 @@ agent-loop-aware logic:
 
 from __future__ import annotations
 
-import json
-import uuid
-from dataclasses import dataclass, field, asdict, is_dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from codingkit.core.agent_loop import AgentLoop, LoopResult, LoopState, TurnRecord
-from codingkit.feedback.correction_state import CorrectionContext
+from codingkit.core.agent_loop import AgentLoop, LoopResult, TurnRecord
 from codingkit.memory.session_store import SessionStore
-
 
 __all__ = [
     "SessionManager",

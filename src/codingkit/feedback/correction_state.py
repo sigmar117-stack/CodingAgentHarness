@@ -15,13 +15,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import List
 
 from codingkit.feedback.classifier import (
     ClassificationResult,
-    FailureCategory,
 )
-
 
 __all__ = [
     "CorrectionState",

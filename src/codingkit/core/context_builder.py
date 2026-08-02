@@ -17,9 +17,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from codingkit.feedback.ingester import FeedbackContext, build_feedback_prompt
-from codingkit.memory.memory_manager import MemoryManager
 from codingkit.tools.registry import ToolRegistry
-
 
 __all__ = [
     "ContextBuilder",

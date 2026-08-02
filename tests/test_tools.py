@@ -20,12 +20,11 @@ from codingkit.tools.edit_file import EditFileTool
 from codingkit.tools.execute_command import ExecuteCommandTool
 from codingkit.tools.git_operation import GitOperationTool
 from codingkit.tools.read_file import ReadFileTool
-from codingkit.tools.registry import ToolRegistry, default_registry
+from codingkit.tools.registry import default_registry
 from codingkit.tools.run_tests import RunTestsTool, _parse_junitxml
 from codingkit.tools.search_content import SearchContentTool
 from codingkit.tools.search_files import SearchFilesTool
 from codingkit.tools.write_file import WriteFileTool
-
 
 # --- Registry (PLAN T2.1 ① ⑥) --------------------------------------------
 

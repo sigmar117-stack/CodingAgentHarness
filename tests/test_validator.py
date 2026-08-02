@@ -5,15 +5,12 @@ TDD: write a failing test first, then make it pass.
 
 from __future__ import annotations
 
-import pytest
-
 from codingkit.feedback.validator import (
     FailureDetail,
     TestResult,
     parse_junit_xml,
     parse_raw_output,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — hand-crafted JUnit XML strings

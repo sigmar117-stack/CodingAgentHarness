@@ -13,10 +13,9 @@ rate-limit / error responses from the LLM.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from codingkit.core.llm_client import LLMResponse, ToolCall
-
 
 __all__ = [
     "ParsedResponse",

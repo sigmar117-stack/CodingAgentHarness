@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from codingkit.core.agent_loop import AgentLoop, LoopState, TurnRecord
+from codingkit.core.agent_loop import AgentLoop
 from codingkit.core.llm_client import LLMResponse, MockLLMClient
 from codingkit.core.session_manager import (
     SessionInfo,
@@ -24,7 +24,6 @@ from codingkit.core.session_manager import (
     _turn_to_dict,
 )
 from codingkit.tools.registry import ToolRegistry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

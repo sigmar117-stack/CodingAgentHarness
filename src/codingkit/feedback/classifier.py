@@ -31,7 +31,6 @@ from typing import List
 
 from codingkit.feedback.validator import FailureDetail, TestResult
 
-
 __all__ = [
     "FailureCategory",
     "ClassificationResult",

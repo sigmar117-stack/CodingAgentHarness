@@ -21,34 +21,31 @@ It supports ``cancel()`` and ``resume()`` for session management.
 
 from __future__ import annotations
 
-import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from codingkit.core.context_builder import ContextBuilder
-from codingkit.core.llm_client import LLMClient, LLMResponse, MockLLMClient, ToolCall
+from codingkit.core.llm_client import LLMClient, LLMResponse, ToolCall
 from codingkit.core.response_parser import ParsedResponse, ResponseParser
 from codingkit.feedback.classifier import (
     ClassificationResult,
-    FailureCategory,
     classify,
 )
 from codingkit.feedback.correction_state import (
     CorrectionContext,
     CorrectionState,
 )
-from codingkit.feedback.ingester import FeedbackContext, build_feedback_prompt
+from codingkit.feedback.ingester import FeedbackContext
 from codingkit.feedback.strategy_engine import StrategyEngine
 from codingkit.feedback.validator import TestResult, parse_junit_xml, parse_raw_output
 from codingkit.governance.approval import ApprovalDecision, ApprovalHandler
 from codingkit.governance.guardrail import Guardrail, GuardrailResult
 from codingkit.memory.memory_manager import MemoryManager
-from codingkit.tools.base import RiskLevel, ToolResult
+from codingkit.tools.base import ToolResult
 from codingkit.tools.registry import ToolRegistry
-
 
 __all__ = [
     "AgentLoop",

@@ -6,15 +6,10 @@ behaviour.
 
 from __future__ import annotations
 
-import json
-from typing import Any, Dict, List
-from unittest.mock import patch
-
 import pytest
 from fastapi.testclient import TestClient
 
 from codingkit.web.server import create_app
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

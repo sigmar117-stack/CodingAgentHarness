@@ -6,19 +6,25 @@ engine to show the state machine in action.
 No real LLM required — this is a deterministic demonstration.
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+# Render emoji/box-drawing output on any console without crashing
+# (Windows GBK consoles otherwise raise UnicodeEncodeError on ✅/▶).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
 from codingkit.feedback.classifier import (
-    ClassificationResult,
     FailureCategory,
-    classify_failure,
+    classify,
 )
 from codingkit.feedback.correction_state import CorrectionState
 from codingkit.feedback.strategy_engine import (
-    STRATEGY_CHAINS,
     StrategyEngine,
     get_strategy_chain,
 )
@@ -55,7 +61,7 @@ def main() -> None:
 
     # --- Step 2: Classify the failure ---
     print("▶ Step 2: Classify the failure")
-    classification = classify_failure(failure)
+    classification = classify(test_result)[0]
     print(f"  Category: {classification.category.value}")
     print(f"  Confidence: {classification.confidence:.2f}")
     print(f"  Summary: {classification.summary}")

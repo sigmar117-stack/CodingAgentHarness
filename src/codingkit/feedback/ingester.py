@@ -12,16 +12,14 @@ well-organised picture of what has been tried and what should be tried next.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Optional
 
 from codingkit.feedback.classifier import ClassificationResult
 from codingkit.feedback.correction_state import (
-    CorrectionAttempt,
     CorrectionContext,
     CorrectionState,
 )
 from codingkit.feedback.validator import TestResult
-
 
 __all__ = [
     "FeedbackContext",

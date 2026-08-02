@@ -43,7 +43,7 @@ web = ["fastapi>=0.110", "uvicorn>=0.29"]
 # All extras combined.
 all = ["codingkit[memory,llm,web]"]
 # Test tooling.
-dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5"]
 
 [project.scripts]
 codingkit = "codingkit.cli.main:app"
@@ -67,3 +67,17 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E9 = syntax errors; F = pyflakes (real bugs: unused imports/names, undefined
+# names, redefinitions); I = isort (import order). Kept deliberately tight so
+# the gate catches real issues without mandating a style reformat.
+select = ["E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-exporting the public API from package __init__ files is intentional.
+"__init__.py" = ["F401"]

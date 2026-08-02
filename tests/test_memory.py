@@ -4,18 +4,15 @@ Covers SessionStore, VectorStore (with ChromaDB fallback), and MemoryManager.
 All tests are deterministic and require no network or real LLM.
 """
 
-import json
-import os
 import tempfile
 import uuid
 from pathlib import Path
 
 import pytest
 
-from codingkit.memory.session_store import SessionStore
-from codingkit.memory.vector_store import VectorStore, InMemoryStore
 from codingkit.memory.memory_manager import MemoryManager
-
+from codingkit.memory.session_store import SessionStore
+from codingkit.memory.vector_store import InMemoryStore, VectorStore
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 

@@ -10,12 +10,9 @@ from __future__ import annotations
 from datetime import timedelta
 from unittest.mock import patch
 
-import pytest
-
 from codingkit.core.llm_client import ToolCall
 from codingkit.governance.approval import ApprovalDecision, ApprovalHandler
-from codingkit.governance.guardrail import Guardrail, GuardrailResult
-
+from codingkit.governance.guardrail import Guardrail
 
 # ---------------------------------------------------------------------------
 # Guardrail tests

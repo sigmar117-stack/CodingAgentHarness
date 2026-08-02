@@ -8,11 +8,9 @@ rest of the application remains functional (SPEC §3.6, PLAN T2.3).
 from __future__ import annotations
 
 import re
-import warnings
 from collections import Counter
 from math import log, sqrt
-from typing import Any, Dict, List, Optional, Set, Tuple
-
+from typing import Any, Dict, List, Optional, Tuple
 
 # ═══════════════════════════════════════════════════════════════════════════
 # InMemoryStore  —  fallback for when ChromaDB is unavailable
@@ -227,7 +225,6 @@ class VectorStore:
         """
         metadata = metadata or {}
         if self._using_chromadb:
-            import chromadb  # type: ignore[import-untyped]
             try:
                 self._collection.add(
                     ids=[record_id],
@@ -259,7 +256,6 @@ class VectorStore:
             ``score``.  Empty list when no matches are found.
         """
         if self._using_chromadb:
-            import chromadb  # type: ignore[import-untyped]
             try:
                 where = None
                 if filter_metadata:

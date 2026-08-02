@@ -66,10 +66,11 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------------
-  # Lint (basic Python syntax check)
+  # Lint (ruff — real checks: syntax errors, pyflakes, import order)
   # ---------------------------------------------------------------------------
   lint:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +84,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Check Python syntax
-        run: python -m py_compile src/codingkit/*.py src/codingkit/**/*.py
-        continue-on-error: true
+      - name: Lint with ruff
+        run: ruff check src/ tests/ demo/

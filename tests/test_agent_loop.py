@@ -17,9 +17,6 @@ Verification targets (from PLAN T4.1):
 
 from __future__ import annotations
 
-import json
-from typing import Any, Dict, List
-
 import pytest
 
 from codingkit.core.agent_loop import (
@@ -30,11 +27,9 @@ from codingkit.core.agent_loop import (
     TurnRecord,
 )
 from codingkit.core.llm_client import LLMResponse, MockLLMClient, ToolCall
-from codingkit.core.response_parser import ParsedResponse, ResponseParser
 from codingkit.governance.approval import ApprovalDecision
 from codingkit.tools.base import ToolResult
 from codingkit.tools.registry import ToolRegistry, default_registry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -321,7 +316,6 @@ class TestFeedbackIntegration:
         # Patch the run_tests tool to return the XML
         from codingkit.tools.run_tests import RunTestsTool
 
-        original_execute = RunTestsTool.execute
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(
             RunTestsTool,

@@ -6,10 +6,8 @@ WebSocket ConnectionManager to provide a real-time web interface.
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -36,7 +34,6 @@ from .websocket import (
     ConnectionManager,
     approval_request_event,
     error_event,
-    log_event,
     state_change_event,
     turn_complete_event,
 )

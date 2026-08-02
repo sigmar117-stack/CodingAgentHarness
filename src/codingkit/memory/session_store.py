@@ -5,7 +5,6 @@ Part of the CodingKit memory module (PLAN T2.3).
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 

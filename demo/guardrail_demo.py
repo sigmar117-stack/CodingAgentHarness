@@ -5,11 +5,19 @@ Shows how the guardrail intercepts dangerous commands and allows safe ones.
 No real LLM required — this is a deterministic demonstration.
 """
 
-import sys
 import os
+import sys
 
 # Ensure the package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+# Render emoji/box-drawing output on any console without crashing
+# (Windows GBK consoles otherwise raise UnicodeEncodeError on ✅/🚫).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
 
 from codingkit.core.llm_client import ToolCall
 from codingkit.governance.guardrail import Guardrail, GuardrailResult

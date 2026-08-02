@@ -27,7 +27,6 @@ Strategy chains per failure category (SPEC §3.3.3):
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List, Optional
 
 from codingkit.feedback.classifier import (
     ClassificationResult,
@@ -38,7 +37,6 @@ from codingkit.feedback.correction_state import (
     CorrectionContext,
     CorrectionState,
 )
-
 
 __all__ = [
     "StrategyEngine",

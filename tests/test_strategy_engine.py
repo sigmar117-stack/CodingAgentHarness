@@ -18,14 +18,10 @@ Verification targets (from PLAN T3.3):
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import pytest
 
 from codingkit.feedback.classifier import ClassificationResult, FailureCategory
 from codingkit.feedback.correction_state import (
-    CorrectionAttempt,
-    CorrectionContext,
     CorrectionState,
 )
 from codingkit.feedback.strategy_engine import (
@@ -33,7 +29,6 @@ from codingkit.feedback.strategy_engine import (
     StrategyEngine,
     get_strategy_chain,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
