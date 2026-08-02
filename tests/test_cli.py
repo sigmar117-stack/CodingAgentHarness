@@ -109,30 +109,52 @@ class TestConfig:
 
     # config key
 
-    def test_config_key_show_when_not_configured(self) -> None:
+    def test_config_key_show_when_not_configured(
+        self, tmp_path, monkeypatch
+    ) -> None:
         """key show when no key is configured."""
+        monkeypatch.chdir(tmp_path)  # isolate from any repo-local .codingkit/
         result = runner.invoke(app, ["config", "key", "show"])
         assert result.exit_code == 0
         # Should handle gracefully
         assert "configured" in result.output.lower() or "no" in result.output.lower()
 
-    def test_config_key_delete(self) -> None:
+    def test_config_key_delete(self, tmp_path, monkeypatch) -> None:
         """key delete without confirmation."""
+        monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "key", "delete"], input="y\n")
         # Exit code can be non-zero if no key exists, that's fine
         assert "deleted" in result.output.lower() or "no" in result.output.lower()
 
     # config method
 
-    def test_config_method_valid(self) -> None:
+    def test_config_method_valid(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "method", "keychain"])
         assert result.exit_code == 0
         assert "keychain" in result.output
+        # The switch must persist — this is the bug being fixed.
+        cfg = (tmp_path / ".codingkit" / "config.yaml").read_text()
+        assert "credential_method: keychain" in cfg
 
-    def test_config_method_invalid(self) -> None:
+    def test_config_method_invalid(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["config", "method", "invalid"])
         assert result.exit_code != 0
         assert "unsupported" in result.output.lower()
+        # Nothing persisted on an invalid method.
+        assert not (tmp_path / ".codingkit" / "config.yaml").exists()
+
+    def test_config_method_switch_persists_to_file(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Switching to `file` writes through to config.yaml so subsequent
+        key commands consult the file backend."""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["config", "method", "file"])
+        assert result.exit_code == 0
+        cfg = (tmp_path / ".codingkit" / "config.yaml").read_text()
+        assert "credential_method: file" in cfg
 
     # config model
 

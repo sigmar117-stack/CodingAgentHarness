@@ -17,12 +17,86 @@ Command groups::
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 from codingkit.__version__ import __version__
 from codingkit.core.agent_loop import AgentLoop
 from codingkit.core.llm_client import MockLLMClient
 from codingkit.tools.registry import default_registry
+
+# ---------------------------------------------------------------------------
+# Configuration persistence (.codingkit/config.yaml)
+# ---------------------------------------------------------------------------
+
+CONFIG_DIR = Path(".codingkit")
+CONFIG_PATH = CONFIG_DIR / "config.yaml"
+
+_DEFAULT_CONFIG: dict[str, str] = {
+    "default_model": "claude-sonnet-5",
+    "credential_method": "keychain",
+    "max_retries": "6",
+}
+
+
+def _load_config() -> dict[str, str]:
+    """Read ``.codingkit/config.yaml`` into a dict, falling back to defaults.
+
+    The file is a trivial ``key: value`` format (written by ``codingkit init``
+    and ``codingkit config method``); we parse it by hand to avoid pulling in
+    a YAML dependency for a handful of scalar keys.
+    """
+    cfg = dict(_DEFAULT_CONFIG)
+    if CONFIG_PATH.exists():
+        for raw in CONFIG_PATH.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or ":" not in line:
+                continue
+            key, _, value = line.partition(":")
+            cfg[key.strip()] = value.strip()
+    return cfg
+
+
+def _save_config(cfg: dict[str, str]) -> None:
+    """Persist the config dict back to ``.codingkit/config.yaml``."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    lines = ["# CodingKit configuration"]
+    for key, value in cfg.items():
+        lines.append(f"{key}: {value}")
+    CONFIG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _configured_method() -> str:
+    """Return the currently configured credential-storage method (lowercase)."""
+    return _load_config().get("credential_method", "keychain").strip().lower()
+
+
+def _get_credential_store():
+    """Build a ``CredentialStore`` for the *configured* method.
+
+    This is what makes ``codingkit config method`` actually take effect: the
+    key commands consult the persisted method rather than hard-coding
+    keychain. For the ``file`` backend the user is prompted for the master
+    password (which is never persisted — SPEC §4.2).
+    """
+    from codingkit.core.credential_store import get_credential_store
+
+    method = _configured_method()
+    if method in ("file", "encrypted"):
+        master = typer.prompt("Enter master password", hide_input=True)
+        if not master:
+            typer.echo("Error: master password cannot be empty.", err=True)
+            raise typer.Exit(1)
+        return get_credential_store("file", master_password=master)
+    if method == "keychain":
+        return get_credential_store("keychain")
+    typer.echo(
+        f"Error: unsupported credential method '{method}'. "
+        f"Use `codingkit config method <keychain|file>` to fix.",
+        err=True,
+    )
+    raise typer.Exit(1)
 
 # ---------------------------------------------------------------------------
 # Main app
@@ -146,9 +220,11 @@ def config_callback() -> None:
 @config_app.command("status")
 def config_status() -> None:
     """Show current configuration."""
+    cfg = _load_config()
     typer.echo("Configuration:")
-    typer.echo("  default_model: claude-sonnet-5")
-    typer.echo("  credential_method: keychain")
+    typer.echo(f"  default_model: {cfg.get('default_model', 'claude-sonnet-5')}")
+    typer.echo(f"  credential_method: {cfg.get('credential_method', 'keychain')}")
+    typer.echo(f"  max_retries: {cfg.get('max_retries', 6)}")
 
 
 # ── config key ────────────────────────────────────────────────────────────
@@ -165,34 +241,33 @@ def key_set() -> None:
         typer.echo("Error: API key cannot be empty.", err=True)
         raise typer.Exit(1)
 
-    # Try keychain first, fall back to encrypted file
-    from codingkit.core.credential_store import get_credential_store
+    try:
+        store = _get_credential_store()
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.echo(f"Error: could not initialise credential store: {e}", err=True)
+        raise typer.Exit(1)
 
-    store = get_credential_store("keychain")
     try:
         store.set("api_key", key)
-        typer.echo("✅ API key configured successfully (keychain).")
-    except Exception:
-        try:
-            store = get_credential_store("file")
-            store.set("api_key", key)
-            typer.echo("✅ API key configured successfully (encrypted file).")
-        except Exception as e:
-            typer.echo(f"Error: failed to store API key: {e}", err=True)
-            raise typer.Exit(1)
+        typer.echo(f"✅ API key configured successfully ({_configured_method()}).")
+    except Exception as e:
+        typer.echo(f"Error: failed to store API key: {e}", err=True)
+        raise typer.Exit(1)
 
 
 @key_app.command("show")
 def key_show() -> None:
     """Show whether an API key is configured (never displays the key itself)."""
-    from codingkit.core.credential_store import get_credential_store
-
-    store = get_credential_store("keychain")
     try:
+        store = _get_credential_store()
         if store.exists("api_key"):
             typer.echo("✅ API key is configured.")
         else:
             typer.echo("ℹ No API key configured. Use `codingkit config key set` to configure.")
+    except typer.Exit:
+        raise
     except Exception:
         typer.echo("ℹ Could not check API key status.")
 
@@ -200,42 +275,45 @@ def key_show() -> None:
 @key_app.command("delete")
 def key_delete() -> None:
     """Delete the configured API key."""
-    from codingkit.core.credential_store import get_credential_store
-
     typer.confirm("Are you sure you want to delete the API key?", abort=True)
 
-    store = get_credential_store("keychain")
     try:
+        store = _get_credential_store()
         if store.exists("api_key"):
             store.delete("api_key")
             typer.echo("✅ API key deleted.")
         else:
-            # Try file store
-            try:
-                store = get_credential_store("file")
-                if store.exists("api_key"):
-                    store.delete("api_key")
-                    typer.echo("✅ API key deleted.")
-                else:
-                    typer.echo("ℹ No API key configured.")
-            except Exception:
-                typer.echo("ℹ No API key configured.")
+            typer.echo("ℹ No API key configured.")
+    except typer.Exit:
+        raise
     except Exception:
         typer.echo("ℹ Could not delete API key.")
 
 
 # ── config method ─────────────────────────────────────────────────────────
 
-@config_app.command()
+@config_app.command("method")
 def method(
     method_name: str = typer.Argument(..., help="Storage method: keychain or file"),
 ) -> None:
-    """Switch credential storage method (keychain or file)."""
+    """Switch credential storage method (keychain or file).
+
+    Persists the choice to ``.codingkit/config.yaml`` so subsequent ``config
+    key`` commands actually use the selected backend.
+    """
     valid = {"keychain", "file"}
-    if method_name.lower() not in valid:
-        typer.echo(f"Error: unsupported method '{method_name}'. Choose from: {', '.join(sorted(valid))}", err=True)
+    name = method_name.strip().lower()
+    if name not in valid:
+        typer.echo(
+            f"Error: unsupported method '{method_name}'. "
+            f"Choose from: {', '.join(sorted(valid))}",
+            err=True,
+        )
         raise typer.Exit(1)
-    typer.echo(f"✅ Credential method set to '{method_name.lower()}'.")
+    cfg = _load_config()
+    cfg["credential_method"] = name
+    _save_config(cfg)
+    typer.echo(f"✅ Credential method set to '{name}' (persisted to .codingkit/config.yaml).")
 
 
 # ── config model ──────────────────────────────────────────────────────────
