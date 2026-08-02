@@ -148,6 +148,9 @@ class ContextBuilder:
         """
         definitions: List[Dict[str, Any]] = []
         for tool in self._tool_registry.list_all():
+            # Omit disabled tools so the LLM never proposes them.
+            if self._tool_registry.is_disabled(tool.name):
+                continue
             params = tool.parameters
             definitions.append({
                 "name": tool.name,

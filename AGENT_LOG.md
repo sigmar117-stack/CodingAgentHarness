@@ -227,14 +227,30 @@
 
 ---
 
+## 2026-08-02 — Phase H：代码审计修复（诚实性补强）
+
+### Task: 修复"机制假装工作"与若干真实 bug
+
+| 字段 | 内容 |
+|------|------|
+| **Superpowers 技能** | `requesting-code-review` → `test-driven-development` |
+| **触发** | 对全项目做一次客观代码审计，发现若干"看起来能跑、实际未实现或会出错"的点位：① 5 条 CLI 命令是 stub（`config model set` 不持久化、`tool enable/disable` 只 echo、`status`/`cancel` 硬编码、`run --plan-only` 输出固定 4 步树）② WebUI 硬编码 `MockLLMClient`，从 UI 永远跑不到真实 LLM ③ `/run` 返回空 `session_id`（竞态）④ 跨线程 WebSocket 广播用 `new_event_loop` 不安全 ⑤ session 恢复把 `feedback_ctx`/`correction_ctx` 序列化为 `None`，中断后丢失修正历史 ⑥ `VectorStore` 默认不持久化（跨会话记忆不成立）+ ChromaDB 分数尺度与 InMemoryStore 不可比 ⑦ `_detect_completion` 靠子串匹配，"I am not finished yet" 会被误判为完成 ⑧ `original_code=""` 让回灌器名义不符实 |
+| **关键修改** | ① CLI：`config model set` 持久化、`tool enable/disable` 持久化到 `.codingkit/config.yaml` 的 `disabled_tools` 并被 `ToolRegistry`/`ContextBuilder`/`AgentLoop` 真正尊重（禁用工具从工具定义中剔除、执行时拒绝且优先于护栏）、`status` 查询 config+最近会话+工具数、`cancel` 诚实说明前台无任务、`_generate_plan` 改为调用真实 LLM 生成计划（无 key 时诚实提示而非伪装）；新增 `_build_llm_client` 让 `codingkit run` 也能用真实 LLM ② WebUI：新增 `_build_web_llm` 读 config+keychain 构建真实 client（无 key 降级 mock），`/run` 在请求线程内预构造 loop 以返回真实 `session_id`，`ConnectionManager` 增加 `broadcast_threadsafe`（`run_coroutine_threadsafe` 调度到主 loop），应用项目 `disabled_tools` ③ session_manager：实现 `_correction_ctx_to/from_dict`、`_feedback_ctx_to/from_dict`、`_test_result_to/from_dict`、`_classification_to/from_dict`，`restore_loop` 恢复修正/反馈状态机；`_toolcall_from_dict` 忽略未知键，修复 `ToolCall(**tc)` 脆弱性 ④ `VectorStore` 默认 `persist_directory=~/.codingkit/chroma`（SPEC §3.6 跨会话记忆真正持久化），ChromaDB 分数改为 `max(0, 1 - distance/2)` 与 InMemoryStore 的 [0,1] cosine 相似度可比 ⑤ `_detect_completion` 改为"文本结尾匹配完成短语"（剥去末尾标点），杜绝"I am not finished yet"误判 ⑥ `_process_test_results` 用 `_last_written_code` 从本轮 `write_file`/`edit_file` 调用回填 `original_code`，回灌器真正包含失败代码 |
+| **验证** | 新增 `tests/test_fixes.py`（14 个回归测试：持久化、注册表禁用、解析器不误判、session 修正上下文往返、向量持久化默认值）。全量 `pytest tests/` → **343 passed**（原 329 + 新增 14），`ruff check` 全过，3 个 demo 全过，无回归 |
+| **人工干预** | 是。此轮改动由人工审计发起、人工编写实现与测试，非 subagent 产出。审计由一个独立 Explore agent 阅读全部未审源文件后给出 file:line 级问题清单，人工据此逐项修复并补测试 |
+| **教训** | "能跑过的测试" ≠ "机制真正工作"。原测试覆盖了各模块的接口层，却没覆盖"CLI 命令是否真的持久化""WebUI 是否真的接了 LLM""session 恢复是否真的保住状态"这类集成层断言。审计 + 回归测试是补这条缝隙的唯一手段。诚实性（stub 标注为 stub、或干脆实现掉）在本作业 §A.4 "机制必须是代码不能是提示词/摆设"的红线意义上，与功能正确性同等重要 |
+
+---
+
 ## 统计数据
 
 | 指标 | 数值 |
 |------|------|
-| **总 commit 数** | 21（含 4 个 merge commit） |
-| **总 PR 数** | 4 |
-| **总测试数** | 328（全部通过，不依赖真实 LLM） |
+| **总 commit 数** | 35（含 6 个 merge commit） |
+| **总 PR 数** | 6 |
+| **总测试数** | 343（全部通过，不依赖真实 LLM） |
+| **CLI 命令数** | 19（SPEC §3.1 的 18 条 + `config status`） |
 | **subagent worktree 数** | 4（冷启动 + T2.2 + T2.3 + T3.1） |
 | **人工 PR worktree 数** | 4（WebUI 后端/前端/分发/文档） |
-| **人工干预次数** | 2（pyproject.toml 警告过滤 + .gitignore 前端排除） |
+| **人工干预次数** | 3（pyproject.toml 警告过滤 + .gitignore 前端排除 + 审计修复轮） |
 | **冷启动验证** | 4 个 task，暴露 1 个 block 级别 SPEC 缺陷 |

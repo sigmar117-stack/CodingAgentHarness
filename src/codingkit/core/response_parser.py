@@ -180,16 +180,27 @@ class ResponseParser:
 
     @staticmethod
     def _detect_completion(text: str) -> bool:
-        """Detect if the LLM indicated task completion.
+        """Detect if the LLM explicitly indicated task completion.
 
-        Checks for completion keywords in the *last* paragraph of the text,
-        since the LLM typically summarises at the end.
+        The completion signal must be a **deliberate final statement**, not an
+        incidental substring.  We require the stripped text to *end with* one
+        of the completion phrases (as a sentence tail), so that sentences like
+        "I am not finished yet" or "the task is not yet complete" do not
+        falsely match — they don't end with a completion phrase.
+
+        This keeps termination a code-controlled decision; the agent loop also
+        terminates when the LLM returns text with no tool calls, so this
+        keyword path is only the explicit "I'm done" signal.
         """
         if not text:
             return False
-        # Consider the last 200 characters for completion detection.
-        tail = text[-200:].lower()
+        # Strip trailing whitespace and common terminal punctuation so a
+        # phrase like "Task complete." still matches.
+        tail = text.rstrip().rstrip(".!?。…").rstrip().lower()
         for keyword in _COMPLETION_KEYWORDS:
-            if keyword in tail:
+            # Match when the message ends with the phrase.  This avoids the
+            # old substring trap where "I am not finished yet" matched
+            # "finished" — it does not end with a completion phrase.
+            if tail.endswith(keyword):
                 return True
         return False

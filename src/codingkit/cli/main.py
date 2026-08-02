@@ -1,4 +1,5 @@
-"""CLI commands (PLAN T4.2).  All 18 commands from SPEC §3.1.
+"""CLI commands (PLAN T4.2).  The 18 commands from SPEC §3.1 plus an
+additional ``config status`` (19 leaf commands in total).
 
 Command groups::
 
@@ -65,6 +66,65 @@ def _save_config(cfg: dict[str, str]) -> None:
     for key, value in cfg.items():
         lines.append(f"{key}: {value}")
     CONFIG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _load_disabled_tools() -> set[str]:
+    """Return the set of tool names disabled in the project config.
+
+    Stored as a comma-separated ``disabled_tools`` line so it survives the
+    trivial ``key: value`` parser.  Returns an empty set when none are
+    configured.
+    """
+    raw = _load_config().get("disabled_tools", "")
+    return {t.strip() for t in raw.split(",") if t.strip()}
+
+
+def _save_disabled_tools(names: set[str]) -> None:
+    """Persist the disabled-tool set to the project config."""
+    cfg = _load_config()
+    cfg["disabled_tools"] = ",".join(sorted(names))
+    _save_config(cfg)
+
+
+def _build_registry():
+    """Construct a ``ToolRegistry`` with the project's disabled tools applied.
+
+    This is what makes ``codingkit tool disable`` take effect on the next
+    ``codingkit run``: the disabled tools are omitted from the LLM's tool
+    definitions and refused at execution time (see ``AgentLoop``).
+    """
+    registry = default_registry()
+    for name in _load_disabled_tools():
+        registry.disable(name)
+    return registry
+
+
+def _build_llm_client():
+    """Build an LLM client from the project config and stored credentials.
+
+    Returns ``(client, configured)`` where ``configured`` is ``True`` when a
+    real provider key was available (so callers can give an honest message in
+    plan-only mode).  When no key is available — e.g. a fresh checkout or the
+    test environment — falls back to ``MockLLMClient`` so the loop still runs.
+    """
+    model = _load_config().get("default_model", "claude-sonnet-5")
+    try:
+        store = _get_credential_store()
+        key = store.get("api_key")
+    except typer.Exit:
+        raise
+    except Exception:
+        key = None
+
+    if not key:
+        return MockLLMClient(model="mock"), False
+
+    from codingkit.core.llm_factory import create_llm_client
+
+    try:
+        return create_llm_client(model, api_key=key), True
+    except Exception:
+        return MockLLMClient(model="mock"), False
 
 
 def _configured_method() -> str:
@@ -160,9 +220,8 @@ def run(
         _generate_plan(task)
         return
 
-    # Mock LLM for now — real LLM support requires API key setup
-    llm = MockLLMClient(model="mock")
-    registry = default_registry()
+    llm, _configured = _build_llm_client()
+    registry = _build_registry()
     loop = AgentLoop(llm_client=llm, tool_registry=registry)
 
     result = loop.run(task)
@@ -177,13 +236,31 @@ def run(
 
 
 def _generate_plan(task: str) -> None:
-    """Generate a plan for a task without executing it."""
+    """Generate an LLM-backed plan for a task without executing it.
+
+    When no API key is configured, we say so honestly instead of printing a
+    hard-coded 4-step outline that pretends the agent "generated a plan".
+    """
     typer.echo("\nPlan:")
-    typer.echo("  ├── 1. Understand the task requirements")
-    typer.echo("  ├── 2. Implement the solution")
-    typer.echo("  ├── 3. Test the implementation")
-    typer.echo("  └── 4. Verify and summarize")
-    typer.echo("\n(Use `codingkit run` without --plan-only to execute)")
+    llm, configured = _build_llm_client()
+    if not configured:
+        typer.echo("  (No API key configured — cannot generate a real plan.)")
+        typer.echo("  Run `codingkit config key set` to configure an API key, then")
+        typer.echo("  re-run `codingkit run --plan-only` for an LLM-generated plan.")
+        return
+
+    prompt = (
+        "You are a coding agent. Break the following task into 3-6 concrete, "
+        "ordered steps (one per line, numbered). Do not implement — only plan.\n\n"
+        f"Task: {task}"
+    )
+    try:
+        resp = llm.generate([{"role": "user", "content": prompt}])
+    except Exception as e:
+        typer.echo(f"  (LLM call failed: {e})", err=True)
+        return
+    plan_text = (resp.content or "").strip()
+    typer.echo(plan_text or "  (LLM returned no plan.)")
 
 
 @app.command()
@@ -343,7 +420,7 @@ def model_list() -> None:
 def model_set(
     model_name: str = typer.Argument(..., help="Model name to set as default"),
 ) -> None:
-    """Set the default LLM model."""
+    """Set the default LLM model (persisted to .codingkit/config.yaml)."""
     known_prefixes = ("claude", "gpt", "o1", "o3", "o4", "mock")
     if not model_name.startswith(known_prefixes):
         typer.echo(
@@ -352,7 +429,10 @@ def model_set(
             err=True,
         )
         raise typer.Exit(1)
-    typer.echo(f"✅ Default model set to '{model_name}'.")
+    cfg = _load_config()
+    cfg["default_model"] = model_name
+    _save_config(cfg)
+    typer.echo(f"✅ Default model set to '{model_name}' (persisted to .codingkit/config.yaml).")
 
 
 # ---------------------------------------------------------------------------
@@ -435,42 +515,48 @@ app.add_typer(tool_app, name="tool")
 
 @tool_app.command("list")
 def tool_list() -> None:
-    """List all available tools."""
-    registry = default_registry()
+    """List all available tools and their enabled/disabled state."""
+    registry = _build_registry()
     tools = registry.list_all()
     typer.echo(f"{'Name':<25} {'Risk Level':<15} Enabled")
     typer.echo("-" * 55)
     for tool in tools:
         risk = tool.risk_level.value
-        typer.echo(f"{tool.name:<25} {risk:<15} ✅")
+        enabled = "❌ disabled" if registry.is_disabled(tool.name) else "✅"
+        typer.echo(f"{tool.name:<25} {risk:<15} {enabled}")
     typer.echo()
-    typer.echo(f"Total: {len(tools)} tools ({len(registry.dangerous_tools())} dangerous)")
+    ndis = len(registry.disabled_names())
+    typer.echo(f"Total: {len(tools)} tools ({len(registry.dangerous_tools())} dangerous, {ndis} disabled)")
 
 
 @tool_app.command()
 def enable(
     tool_name: str = typer.Argument(..., help="Tool name to enable"),
 ) -> None:
-    """Enable a tool."""
+    """Enable a tool (persisted to .codingkit/config.yaml)."""
     registry = default_registry()
-    tool = registry.get(tool_name)
-    if tool is None:
+    if registry.get(tool_name) is None:
         typer.echo(f"Error: unknown tool '{tool_name}'. Use `codingkit tool list` to see available tools.", err=True)
         raise typer.Exit(1)
-    typer.echo(f"✅ Tool '{tool_name}' enabled.")
+    disabled = _load_disabled_tools()
+    disabled.discard(tool_name)
+    _save_disabled_tools(disabled)
+    typer.echo(f"✅ Tool '{tool_name}' enabled (persisted). It will be available on the next `codingkit run`.")
 
 
 @tool_app.command()
 def disable(
     tool_name: str = typer.Argument(..., help="Tool name to disable"),
 ) -> None:
-    """Disable a tool."""
+    """Disable a tool (persisted to .codingkit/config.yaml)."""
     registry = default_registry()
-    tool = registry.get(tool_name)
-    if tool is None:
+    if registry.get(tool_name) is None:
         typer.echo(f"Error: unknown tool '{tool_name}'. Use `codingkit tool list` to see available tools.", err=True)
         raise typer.Exit(1)
-    typer.echo(f"✅ Tool '{tool_name}' disabled.")
+    disabled = _load_disabled_tools()
+    disabled.add(tool_name)
+    _save_disabled_tools(disabled)
+    typer.echo(f"✅ Tool '{tool_name}' disabled (persisted). It will be refused on the next `codingkit run`.")
 
 
 # ---------------------------------------------------------------------------
@@ -480,18 +566,47 @@ def disable(
 
 @app.command()
 def status() -> None:
-    """Show current agent status."""
+    """Show current agent status (config, tools, last session)."""
     typer.echo("CodingKit Status:")
-    typer.echo("  State: idle")
     typer.echo(f"  Version: {__version__}")
-    typer.echo("  Tools: 10 registered")
+
+    cfg = _load_config()
+    typer.echo(f"  Default model: {cfg.get('default_model', 'claude-sonnet-5')}")
+    typer.echo(f"  Credential method: {cfg.get('credential_method', 'keychain')}")
+
+    registry = _build_registry()
+    ndis = len(registry.disabled_names())
+    typer.echo(f"  Tools: {len(registry.list_all())} registered ({ndis} disabled)")
+
+    # Surface the most recent saved session, if any.
+    try:
+        from codingkit.memory.session_store import SessionStore
+
+        sessions = SessionStore().list_sessions()
+    except Exception:
+        sessions = []
+    if sessions:
+        last = sessions[0]
+        typer.echo(
+            f"  Last session: {str(last.get('session_id', '?'))[:12]}… "
+            f"[{last.get('status', '?')}] {str(last.get('task_description', ''))[:40]}"
+        )
+        typer.echo("  State: idle (no task running in this process)")
+    else:
+        typer.echo("  State: idle (no sessions yet)")
     typer.echo("  Use `codingkit run <task>` to start a task.")
 
 
 @app.command()
 def cancel() -> None:
-    """Cancel the current task."""
+    """Cancel the current task.
+
+    ``codingkit run`` runs in the foreground, so there is no concurrent task
+    to cancel from a separate invocation.  This command reports honestly
+    rather than pretending to act on a non-existent background task.
+    """
     typer.echo("ℹ No running task to cancel.")
+    typer.echo("  (`codingkit run` runs in the foreground; press Ctrl+C to interrupt it.)")
 
 
 @app.command()

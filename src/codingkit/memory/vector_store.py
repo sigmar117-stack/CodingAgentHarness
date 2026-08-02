@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from math import log, sqrt
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -195,11 +196,16 @@ class VectorStore:
         """Initialise the store.
 
         Args:
-            persist_directory: Directory for ChromaDB persistence. Ignored
-                               when falling back to InMemoryStore.
+            persist_directory: Directory for ChromaDB persistence. When
+                ``None``, defaults to ``~/.codingkit/chroma`` so cross-session
+                memory actually survives a process restart (SPEC §3.6).
+                Ignored when falling back to :class:`InMemoryStore`.
         """
         self._store: InMemoryStore
         self._using_chromadb = False
+
+        if persist_directory is None:
+            persist_directory = str(Path.home() / ".codingkit" / "chroma")
 
         # Try to use ChromaDB; fall back to InMemoryStore on failure
         try:
@@ -312,10 +318,16 @@ class VectorStore:
         distances = result.get("distances", [[]])[0]
 
         for i, doc_id in enumerate(ids):
+            # ChromaDB's default distance is cosine distance in [0, 2]; the
+            # InMemoryStore returns cosine similarity in [0, 1].  Convert to a
+            # comparable [0, 1] relevance score (clamp negatives to 0) so the
+            # two backends report the same scale.
+            dist = distances[i] if i < len(distances) else 2.0
+            score = max(0.0, 1.0 - (dist / 2.0))
             formatted.append({
                 "id": doc_id,
                 "content": documents[i] if i < len(documents) else "",
                 "metadata": metadatas[i] if i < len(metadatas) else {},
-                "score": 1.0 - distances[i] if i < len(distances) else 0.0,
+                "score": score,
             })
         return formatted

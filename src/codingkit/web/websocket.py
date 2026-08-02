@@ -7,10 +7,11 @@ frontends.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import WebSocket
 
@@ -29,13 +30,28 @@ class ConnectionManager:
         await mgr.broadcast({"type": "state_change", "data": {...}})
         # On disconnect:
         mgr.disconnect(websocket)
+
+    The background agent thread broadcasts via :meth:`broadcast_threadsafe`,
+    which schedules the coroutine on the server's main event loop (captured
+    on the first connect).  Calling ``ws.send_text`` directly from another
+    thread/event loop is unsafe and was the source of dropped updates.
     """
 
     def __init__(self) -> None:
         self._connections: Set[WebSocket] = set()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     async def connect(self, websocket: WebSocket) -> None:
-        """Accept a WebSocket connection and add it to the pool."""
+        """Accept a WebSocket connection and add it to the pool.
+
+        Also captures the running event loop so that background-thread
+        broadcasts can be scheduled back onto it thread-safely.
+        """
+        if self._loop is None:
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = None
         await websocket.accept()
         self._connections.add(websocket)
         logger.info("WebSocket client connected (%d total)", len(self._connections))
@@ -46,7 +62,7 @@ class ConnectionManager:
         logger.info("WebSocket client disconnected (%d remaining)", len(self._connections))
 
     async def broadcast(self, message: Dict[str, Any]) -> None:
-        """Send a JSON message to all connected clients.
+        """Send a JSON message to all connected clients (async, main loop).
 
         Silently drops disconnected clients during iteration.
         """
@@ -59,6 +75,22 @@ class ConnectionManager:
                 stale.append(ws)
         for ws in stale:
             self._connections.discard(ws)
+
+    def broadcast_threadsafe(self, message: Dict[str, Any]) -> None:
+        """Thread-safe broadcast for callers not on the server's event loop.
+
+        Schedules :meth:`broadcast` on the captured main loop.  No-op when no
+        loop is bound yet (no client has connected) or when there are no
+        connections — the background thread can safely call this before any
+        WebSocket is open.
+        """
+        if not self._connections or self._loop is None:
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(self.broadcast(message), self._loop)
+        except RuntimeError:
+            # Loop closed — drop the event silently.
+            return
 
     @property
     def connection_count(self) -> int:

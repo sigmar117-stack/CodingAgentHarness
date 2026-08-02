@@ -37,10 +37,19 @@ ALL_TOOLS: list[Tool] = [
 
 
 class ToolRegistry:
-    """In-memory registry of available tools."""
+    """In-memory registry of available tools.
+
+    Tools can be *disabled* by name (``disable``) and re-enabled
+    (``enable``).  A disabled tool is still present in the registry (so the
+    agent can report a clear "tool disabled" error rather than "unknown
+    tool") but is omitted from the LLM's tool definitions and refused at
+    execution time — this is what makes ``codingkit tool enable/disable``
+    actually take effect rather than being an echo.
+    """
 
     def __init__(self, tools: Optional[list[Tool]] = None) -> None:
         self._tools: dict[str, Tool] = {}
+        self._disabled: set[str] = set()
         for tool in tools or ALL_TOOLS:
             self.register(tool)
 
@@ -52,6 +61,28 @@ class ToolRegistry:
     def get(self, name: str) -> Optional[Tool]:
         """Return the tool with ``name``, or ``None`` if not registered."""
         return self._tools.get(name)
+
+    def disable(self, name: str) -> bool:
+        """Disable *name*.  Returns ``True`` if the tool exists (now disabled)."""
+        if name not in self._tools:
+            return False
+        self._disabled.add(name)
+        return True
+
+    def enable(self, name: str) -> bool:
+        """Re-enable *name*.  Returns ``True`` if the tool exists."""
+        if name not in self._tools:
+            return False
+        self._disabled.discard(name)
+        return True
+
+    def is_disabled(self, name: str) -> bool:
+        """Return ``True`` iff *name* is a registered but disabled tool."""
+        return name in self._disabled
+
+    def disabled_names(self) -> list[str]:
+        """Sorted list of disabled tool names."""
+        return sorted(self._disabled)
 
     def list_all(self) -> list[Tool]:
         return list(self._tools.values())

@@ -399,6 +399,10 @@ class AgentLoop:
     def _execute_tool(self, tc: ToolCall, turn: TurnRecord) -> ToolResult:
         """Execute a single tool call, passing through guardrail and approval.
 
+        Order: a *disabled* tool is refused first — a tool the user has turned
+        off must never reach the approval prompt.  Then dangerous actions go
+        through the HITL guardrail before execution.
+
         Args:
             tc: The tool call from the LLM.
             turn: The current turn record (mutated with guardrail/approval info).
@@ -406,6 +410,18 @@ class AgentLoop:
         Returns:
             The ``ToolResult`` from execution.
         """
+        # --- Disabled check (takes precedence over guardrail) ---
+        if self._tool_registry.is_disabled(tc.name):
+            turn.guardrail_result = GuardrailResult(
+                is_dangerous=False, risk_reason=""
+            )
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"Tool '{tc.name}' is disabled. "
+                      f"Re-enable it with `codingkit tool enable {tc.name}`.",
+            )
+
         # --- Guardrail check ---
         guardrail_result = self._guardrail.check(tc)
         turn.guardrail_result = guardrail_result
@@ -555,12 +571,35 @@ class AgentLoop:
 
         # --- Build feedback context ---
         self._feedback_ctx = FeedbackContext(
-            original_code="",  # Would come from the task context
+            original_code=self._last_written_code(turn),  # the code that failed
             test_results=test_result,
             classification=primary,
             correction_history=self._correction_ctx,
             current_strategy=strategy,
         )
+
+    @staticmethod
+    def _last_written_code(turn: TurnRecord) -> str:
+        """Best-effort recovery of the code most recently written/edited.
+
+        The ingester needs the failing code so the LLM can fix it; without
+        this the feedback prompt carried an empty ``original_code`` (the
+        ingester was "named but not fed").  We pull the ``content`` /
+        ``new`` argument from the most recent ``write_file`` / ``edit_file``
+        call in *turn*.
+        """
+        if not turn.parsed_response:
+            return ""
+        for tc in reversed(turn.parsed_response.tool_calls or []):
+            if tc.name == "write_file":
+                content = tc.arguments.get("content")
+                if isinstance(content, str):
+                    return content
+            elif tc.name == "edit_file":
+                new = tc.arguments.get("new")
+                if isinstance(new, str):
+                    return new
+        return ""
 
     # ------------------------------------------------------------------
     # Result building

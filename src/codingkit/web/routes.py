@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -124,20 +125,13 @@ def _on_approval_request(action: ToolCall) -> None:
 
     Pushes the request to all connected WebSocket clients.
     """
-    import asyncio
-
     action_dict = {
         "name": action.name,
         "arguments": action.arguments,
         "id": action.id or "",
     }
     event = approval_request_event(action_dict)
-    try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(ws_manager.broadcast(event))
-        loop.close()
-    except Exception:
-        pass
+    ws_manager.broadcast_threadsafe(event)
 
 
 # ---------------------------------------------------------------------------
@@ -150,15 +144,8 @@ def _on_turn_complete(turn: TurnRecord) -> None:
 
     Broadcasts the turn data to connected WebSocket clients.
     """
-    import asyncio
-
     event = turn_complete_event(_turn_to_dict(turn))
-    try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(ws_manager.broadcast(event))
-        loop.close()
-    except Exception:
-        pass
+    ws_manager.broadcast_threadsafe(event)
 
 
 # ---------------------------------------------------------------------------
@@ -166,31 +153,88 @@ def _on_turn_complete(turn: TurnRecord) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _run_loop_in_background(task: str, plan_only: bool) -> None:
-    """Run the agent loop in a background thread.
+def _build_web_llm():
+    """Build an LLM client for the WebUI from config + stored credentials.
 
-    Constructs the loop with a MockLLMClient (or real LLM when configured),
-    runs it, and saves the result.
+    Uses the OS keychain backend only (no interactive master-password prompt,
+    which a server cannot do).  Falls back to ``MockLLMClient`` when no key is
+    available — e.g. the test environment — so the loop always runs.
+
+    Returns ``(client, configured)``; ``configured`` is ``True`` when a real
+    provider key was loaded.
+    """
+    model = "claude-sonnet-5"
+    config_path = Path(".codingkit") / "config.yaml"
+    if config_path.exists():
+        for raw in config_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith("default_model:"):
+                model = line.split(":", 1)[1].strip() or model
+                break
+
+    key = None
+    try:
+        from codingkit.core.credential_store import get_credential_store
+
+        store = get_credential_store("keychain")
+        key = store.get("api_key")
+    except Exception:
+        key = None
+
+    if key:
+        from codingkit.core.llm_factory import create_llm_client
+
+        try:
+            return create_llm_client(model, api_key=key), True
+        except Exception:
+            return MockLLMClient(model="mock"), False
+    return MockLLMClient(model="mock"), False
+
+
+def _apply_disabled_tools(registry) -> None:
+    """Apply the project's disabled-tool set to *registry* (mirrors the CLI)."""
+    config_path = Path(".codingkit") / "config.yaml"
+    if not config_path.exists():
+        return
+    raw_disabled = ""
+    for raw in config_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith("disabled_tools:"):
+            raw_disabled = line.split(":", 1)[1].strip()
+            break
+    for name in (t.strip() for t in raw_disabled.split(",") if t.strip()):
+        registry.disable(name)
+
+
+def _build_loop(task: str, plan_only: bool) -> AgentLoop:
+    """Construct the AgentLoop up-front so its session_id is available
+    *before* the background thread starts (fixes the /run race where the
+    endpoint returned an empty session_id).
+    """
+    llm, _configured = _build_web_llm()
+    registry = default_registry()
+    _apply_disabled_tools(registry)
+    approval = ApprovalHandler()
+    approval.set_remote_handler(_on_approval_request)
+    return AgentLoop(
+        llm_client=llm,
+        tool_registry=registry,
+        approval_handler=approval,
+        on_turn_complete=_on_turn_complete,
+    )
+
+
+def _run_loop_in_background(loop: AgentLoop, task: str) -> None:
+    """Run a pre-constructed agent loop in a background thread.
+
+    The loop (and its session_id) is created by the caller, so /run can return
+    a real session_id immediately.  ``plan_only`` is currently ignored at the
+    loop level — planning is an LLM call handled by the CLI / a future plan
+    endpoint; the loop runs the same either way.
     """
     global _current_loop
 
     try:
-        # Build the loop with WebSocket-aware callbacks
-        llm = MockLLMClient(model="mock")
-        registry = default_registry()
-        approval = ApprovalHandler()
-        approval.set_remote_handler(_on_approval_request)
-
-        loop = AgentLoop(
-            llm_client=llm,
-            tool_registry=registry,
-            approval_handler=approval,
-            on_turn_complete=_on_turn_complete,
-        )
-
-        with _loop_lock:
-            _current_loop = loop
-
         # Broadcast initial state
         _broadcast_state(loop)
 
@@ -201,9 +245,6 @@ def _run_loop_in_background(task: str, plan_only: bool) -> None:
         session_manager.save_loop(loop, result)
 
         # Broadcast completion
-        with _loop_lock:
-            pass  # state is already set by loop.run()
-
         _broadcast_state(loop)
 
     except Exception as exc:
@@ -221,9 +262,7 @@ def _run_loop_in_background(task: str, plan_only: bool) -> None:
 
 
 def _broadcast_state(loop: Optional[AgentLoop] = None) -> None:
-    """Broadcast the current state via WebSocket."""
-    import asyncio
-
+    """Broadcast the current state via WebSocket (thread-safe)."""
     with _loop_lock:
         l = loop or _current_loop
         if l is None:
@@ -234,25 +273,13 @@ def _broadcast_state(loop: Optional[AgentLoop] = None) -> None:
             task=l.task,
             current_turn=l.current_turn,
         )
-    try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(ws_manager.broadcast(event))
-        loop.close()
-    except Exception:
-        pass
+    ws_manager.broadcast_threadsafe(event)
 
 
 def _broadcast_error(detail: str) -> None:
-    """Broadcast an error via WebSocket."""
-    import asyncio
-
+    """Broadcast an error via WebSocket (thread-safe)."""
     event = error_event(detail)
-    try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(ws_manager.broadcast(event))
-        loop.close()
-    except Exception:
-        pass
+    ws_manager.broadcast_threadsafe(event)
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +305,7 @@ async def get_status() -> StatusResponse:
 @router.post("/run", response_model=RunResponse)
 async def run_task(req: TaskRequest) -> RunResponse:
     """Start a new agent task in the background."""
-    global _loop_thread
+    global _loop_thread, _current_loop
 
     with _loop_lock:
         if _current_loop is not None and _current_loop.state == LoopState.RUNNING:
@@ -286,22 +313,23 @@ async def run_task(req: TaskRequest) -> RunResponse:
                 status_code=409,
                 detail="A task is already running. Cancel it first.",
             )
+        # Construct the loop here (on the request thread) so its session_id
+        # is already available — the previous version constructed it inside
+        # the background thread and returned an empty session_id.
+        loop = _build_loop(req.task, req.plan_only)
+        _current_loop = loop
 
-    # Start the background thread
+    # Start the background thread with the already-constructed loop.
     thread = threading.Thread(
         target=_run_loop_in_background,
-        args=(req.task, req.plan_only),
+        args=(loop, req.task),
         daemon=True,
     )
     thread.start()
     _loop_thread = thread
 
-    # Get the session ID from the loop (may not be set yet)
-    with _loop_lock:
-        sid = _current_loop.session_id if _current_loop else ""
-
     return RunResponse(
-        session_id=sid,
+        session_id=loop.session_id,
         status="started",
         message="Task started in background.",
     )
