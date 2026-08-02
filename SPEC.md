@@ -423,7 +423,7 @@ Agent 主循环
 | | `keyring>=24.0` | 操作系统钥匙串访问 | 必选（Linux 需 D-Bus） |
 | | `cryptography>=41.0` | 加密文件加解密 | 必选 |
 | **LLM (llm)** | `anthropic>=0.30` | Claude 模型调用 | 可选，`pip install codingkit[llm]` |
-| | `openai>=1.0` | GPT 模型调用 | 可选，同上 |
+| | `openai>=1.0` | GPT 及 OpenAI 兼容 provider（DeepSeek / GLM / Kimi / MiniMax / Qwen）调用 | 可选，同上 |
 | **记忆 (memory)** | `chromadb>=0.4` | 向量存储与检索 | 可选，`pip install codingkit[memory]`（降级到 JSON 文件） |
 | **WebUI (web)** | `fastapi>=0.100` | WebUI 后端 | 可选，`pip install codingkit[web]` |
 | | `uvicorn>=0.23` | ASGI 服务器 | 可选，同上 |
