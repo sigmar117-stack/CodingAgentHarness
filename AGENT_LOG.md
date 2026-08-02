@@ -211,13 +211,29 @@
 
 ---
 
+## 2026-08-02 — 反馈闭环接入主循环（修正工程缺口）
+
+### Task: T4.1 增强 — 策略状态机真正驱动 agent loop 多轮自我修正
+
+| 字段 | 内容 |
+|------|------|
+| **Superpowers 技能** | `requesting-code-review`（自评发现）→ `test-driven-development` |
+| **触发** | 项目质量评审中发现：`_process_test_results` 每次测试失败都调 `initialize`，`record_attempt` 在 `agent_loop` 中从未被调用——状态机的 3 次切换 / 6 次上报阈值在真实自主 loop 中永不触发，只在 demo/tests 手动驱动。重点维度的深度机制"造好了、测了、演示了，但没插进流水线通电"。 |
+| **关键修改** | ① `run()` 起始重置 `_correction_ctx`/`_feedback_ctx`，每任务干净起步 ② `_process_test_results` 改为跨 turn 有状态：首次失败 `initialize`，后续失败 `record_attempt(success=False)` 推进状态机（attempt 计数 / 连续失败切换 / 6 次阈值），状态机进入 `MAX_RETRIES_REACHED`/`STRATEGY_EXHAUSTED`/`USER_INTERVENTION` 时 `self._state = PAUSED` 真正停下上报；测试通过且修正进行中时 `record_attempt(success=True)` 标记 `SUCCEEDED` ③ 新增 `TestFeedbackMultiRound`：`test_repeated_failures_escalate_and_pause`（8 轮失败 → PAUSED + 上报态）、`test_failure_then_pass_records_success`（失败后通过 → SUCCEEDED） |
+| **验证** | 全量 `pytest tests/` → **328 passed**（原 326 + 新增 2），无回归。mock LLM 下可确定性验证"agent 收到失败反馈后据状态机推进、阈值后停下上报、恢复后标记成功"——§A.6-② 从单次层面提升到真·多轮闭环层面 |
+| **Commit** | 见本次提交 |
+| **人工干预** | 是。此改动由人工评审发起、人工编写实现与测试，非 subagent 产出。状态机自身实现（T3.3）未改动，仅将其接入主循环 |
+| **教训** | "机制存在 + 机制被单测" ≠ "机制在真实流水线里被驱动"。重点维度的深度必须验证它接入主循环后仍按预期工作——这正是 §A.4-C "移除 LLM 后机制还能用单测验证"在闭环层面的真实考场 |
+
+---
+
 ## 统计数据
 
 | 指标 | 数值 |
 |------|------|
-| **总 commit 数** | 20（含 4 个 merge commit） |
+| **总 commit 数** | 21（含 4 个 merge commit） |
 | **总 PR 数** | 4 |
-| **总测试数** | 326（全部通过，不依赖真实 LLM） |
+| **总测试数** | 328（全部通过，不依赖真实 LLM） |
 | **subagent worktree 数** | 4（冷启动 + T2.2 + T2.3 + T3.1） |
 | **人工 PR worktree 数** | 4（WebUI 后端/前端/分发/文档） |
 | **人工干预次数** | 2（pyproject.toml 警告过滤 + .gitignore 前端排除） |

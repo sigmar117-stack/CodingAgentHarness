@@ -565,3 +565,102 @@ class TestCancelWhenIdle:
         """cancel() when IDLE → state becomes CANCELLED."""
         loop.cancel()
         assert loop.state == LoopState.CANCELLED
+
+
+# ---------------------------------------------------------------------------
+# ⑩ Multi-round feedback loop: the strategy state machine drives the loop
+#    (A.6-② — feedback makes the agent change its next action and escalate)
+# ---------------------------------------------------------------------------
+
+
+class TestFeedbackMultiRound:
+    """The correction state machine must actually advance across turns inside
+    the real agent loop — not just exist in isolation. These tests inject
+    repeated failures via a stubbed ``run_tests`` tool and assert the loop
+    (a) escalates and pauses after the threshold, and (b) records a successful
+    recovery when tests later pass.
+    """
+
+    _FAILING_XML = (
+        '<?xml version="1.0"?>'
+        '<testsuite name="pytest" tests="1" failures="1" errors="0">'
+        '<testcase name="test_a" classname="t_mod">'
+        '<failure type="AssertionError" message="expected 5, got 4"/>'
+        "</testcase></testsuite>"
+    )
+    _PASSING_XML = (
+        '<?xml version="1.0"?>'
+        '<testsuite name="pytest" tests="1" failures="0" errors="0">'
+        '<testcase name="test_a" classname="t_mod"/>'
+        "</testsuite>"
+    )
+
+    def _stub_run_tests(self, outputs: list[str]) -> tuple["pytest.MonkeyPatch", "iter"]:
+        """Patch ``RunTestsTool.execute`` to return the given outputs in order."""
+        from codingkit.tools.run_tests import RunTestsTool
+
+        mp = pytest.MonkeyPatch()
+        it = iter(outputs)
+
+        def _execute(self, params):  # noqa: ANN001
+            return ToolResult(success=True, output=next(it))
+
+        mp.setattr(RunTestsTool, "execute", _execute)
+        return mp, it
+
+    def test_repeated_failures_escalate_and_pause(
+        self, loop: AgentLoop, mock_llm: MockLLMClient
+    ) -> None:
+        """8 rounds of failing tests → loop PAUSES after the 6-attempt ceiling,
+        and the final correction context is in an escalation state."""
+        # 8 run_tests calls (mock returns the same tool-call each turn);
+        # the loop should pause before exhausting them.
+        mock_llm._responses = [
+            _tool_call_response("run_tests", {"path": "t_mod.py"}),
+        ] * 8
+
+        mp, _ = self._stub_run_tests([self._FAILING_XML] * 8)
+        try:
+            result = loop.run("fix the failing test")
+        finally:
+            mp.undo()
+
+        # The loop must have stopped for user intervention (not COMPLETED).
+        assert result.state == LoopState.PAUSED
+        # The feedback loop ran across many turns, hitting the ceiling.
+        assert result.total_feedback_rounds >= 6
+        # The final correction context must be in an escalation state.
+        corrected = [t for t in result.turns if t.correction_context is not None]
+        assert corrected
+        final_state = corrected[-1].correction_context.state.value
+        assert final_state in {
+            "max_retries_reached",
+            "strategy_exhausted",
+            "user_intervention",
+        }, f"expected escalation, got {final_state}"
+
+    def test_failure_then_pass_records_success(
+        self, loop: AgentLoop, mock_llm: MockLLMClient
+    ) -> None:
+        """Two failing rounds followed by a pass → the correction context
+        transitions to SUCCEEDED (the loop recovered, not escalated)."""
+        mock_llm._responses = [
+            _tool_call_response("run_tests", {"path": "t_mod.py"}),
+            _tool_call_response("run_tests", {"path": "t_mod.py"}),
+            _tool_call_response("run_tests", {"path": "t_mod.py"}),
+            LLMResponse(content="Fixed and verified. Task complete!", model="mock"),
+        ]
+
+        mp, _ = self._stub_run_tests(
+            [self._FAILING_XML, self._FAILING_XML, self._PASSING_XML]
+        )
+        try:
+            result = loop.run("fix then pass")
+        finally:
+            mp.undo()
+
+        assert result.state == LoopState.COMPLETED
+        corrected = [t for t in result.turns if t.correction_context is not None]
+        assert corrected
+        # After the pass, the in-flight correction must be marked succeeded.
+        assert corrected[-1].correction_context.state.value == "succeeded"

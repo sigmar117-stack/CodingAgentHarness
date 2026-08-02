@@ -224,6 +224,11 @@ class AgentLoop:
         self._task = task
         self._state = LoopState.RUNNING
         self._current_turn = 0
+        # Fresh per-task feedback state.  The correction state machine is
+        # advanced across turns within a single run; a new task starts over.
+        self._feedback_ctx = None
+        self._correction_ctx = None
+        self._last_test_result = None
 
         while self._state == LoopState.RUNNING:
             self._current_turn += 1
@@ -454,7 +459,22 @@ class AgentLoop:
     ) -> None:
         """Process test results through the feedback loop.
 
-        Validates → classifies → runs strategy engine → builds feedback context.
+        Validates → classifies → advances the strategy state machine → builds
+        a feedback context for the next turn.
+
+        This method is **stateful across turns** within one ``run()``:
+
+        * The first failure ``initialize``s a fresh ``CorrectionContext`` and
+          suggests the first strategy.
+        * Each subsequent failure calls ``record_attempt(success=False)`` to
+          advance the state machine — driving the auto-switch-after-3 and
+          escalate-after-6 behaviours that are the engine's main contribution.
+        * When the state machine reaches an escalation/terminal state
+          (``MAX_RETRIES_REACHED`` / ``STRATEGY_EXHAUSTED`` /
+          ``USER_INTERVENTION``), the loop is paused so the user is reported
+          to rather than silently re-looping.
+        * When tests pass while a correction is in flight, the attempt is
+          recorded as successful.
         """
         # --- Parse test result ---
         raw_output = tool_result.output
@@ -468,35 +488,82 @@ class AgentLoop:
 
         turn.test_result = test_result
 
-        # Only process feedback if there are failures
+        # --- All tests passed ---
         if test_result.failed == 0 and test_result.errors == 0:
+            # If a correction was in flight, mark it succeeded so the
+            # state machine (and the WebUI) reflects the recovery.
+            if (
+                self._correction_ctx is not None
+                and self._correction_ctx.state == CorrectionState.ATTEMPTING
+            ):
+                self._correction_ctx = self._strategy_engine.record_attempt(
+                    self._correction_ctx,
+                    success=True,
+                    result="Tests passed after correction.",
+                )
+                turn.correction_context = self._correction_ctx
+                self._feedback_ctx = FeedbackContext(
+                    test_results=test_result,
+                    classification=self._correction_ctx.classification,
+                    correction_history=self._correction_ctx,
+                    current_strategy=None,
+                )
             return
 
-        # --- Classify failures ---
+        # --- There are failures: classify ---
         classifications = classify(test_result)
         turn.classification = classifications
+        if not classifications:
+            return
+        primary = classifications[0]
 
-        # --- Run strategy engine ---
-        if classifications:
-            primary = classifications[0]
+        # --- Advance the state machine ---
+        if self._correction_ctx is None or self._correction_ctx.state in (
+            CorrectionState.SUCCEEDED,
+            CorrectionState.CANCELLED,
+        ):
+            # First failure for this task → fresh correction context.
             self._correction_ctx = self._strategy_engine.initialize(
                 session_id=self._session_id,
                 turn_id=str(turn.turn_number),
                 classification=primary,
             )
-            turn.correction_context = self._correction_ctx
+        else:
+            # Ongoing correction → record this failure to advance the
+            # machine (attempt counter, consecutive-failure switch, ceiling).
+            self._correction_ctx = self._strategy_engine.record_attempt(
+                self._correction_ctx,
+                success=False,
+                result=f"Tests still failing: {primary.summary}",
+            )
+        turn.correction_context = self._correction_ctx
 
-            # Get next strategy
-            strategy = self._strategy_engine.next_strategy(self._correction_ctx)
-
-            # --- Build feedback context ---
+        # --- Escalation: stop and report to the user ---
+        if self._correction_ctx.state in (
+            CorrectionState.MAX_RETRIES_REACHED,
+            CorrectionState.STRATEGY_EXHAUSTED,
+            CorrectionState.USER_INTERVENTION,
+        ):
+            self._state = LoopState.PAUSED
             self._feedback_ctx = FeedbackContext(
-                original_code="",  # Would come from the task context
                 test_results=test_result,
                 classification=primary,
                 correction_history=self._correction_ctx,
-                current_strategy=strategy,
+                current_strategy=None,
             )
+            return
+
+        # --- Suggest the next strategy to the LLM for the upcoming turn ---
+        strategy = self._strategy_engine.next_strategy(self._correction_ctx)
+
+        # --- Build feedback context ---
+        self._feedback_ctx = FeedbackContext(
+            original_code="",  # Would come from the task context
+            test_results=test_result,
+            classification=primary,
+            correction_history=self._correction_ctx,
+            current_strategy=strategy,
+        )
 
     # ------------------------------------------------------------------
     # Result building
