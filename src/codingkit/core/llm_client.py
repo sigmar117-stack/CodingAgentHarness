@@ -256,13 +256,18 @@ class ClaudeClient(LLMClient):
     ) -> None:
         self._model = model
         self._max_tokens = max_tokens
-        if client is not None:
-            # Dependency injection — used by tests to avoid the network.
-            self._client = client
-        else:
-            import anthropic  # noqa: PLC0415 — lazy import (optional `llm` extra)
+        self._api_key = api_key
+        # client is None → lazy import on first generate() so the class
+        # can be instantiated without the optional `llm` extras installed.
+        self._client = client
 
-            self._client = anthropic.Anthropic(api_key=api_key)
+    def _ensure_client(self) -> None:
+        """Lazily import and initialise the Anthropic SDK if needed."""
+        if self._client is not None:
+            return
+        import anthropic  # noqa: PLC0415 — lazy import (optional `llm` extra)
+
+        self._client = anthropic.Anthropic(api_key=self._api_key)
 
     def generate(
         self,
@@ -270,6 +275,7 @@ class ClaudeClient(LLMClient):
         tools: Optional[list[dict]] = None,
         **kwargs: Any,
     ) -> LLMResponse:
+        self._ensure_client()
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": _messages_to_anthropic(messages),
@@ -346,12 +352,18 @@ class OpenAIClient(LLMClient):
         client: Any = None,
     ) -> None:
         self._model = model
-        if client is not None:
-            self._client = client
-        else:
-            import openai  # noqa: PLC0415 — lazy import (optional `llm` extra)
+        self._api_key = api_key
+        # client is None → lazy import on first generate() so the class
+        # can be instantiated without the optional `llm` extras installed.
+        self._client = client
 
-            self._client = openai.OpenAI(api_key=api_key)
+    def _ensure_client(self) -> None:
+        """Lazily import and initialise the OpenAI SDK if needed."""
+        if self._client is not None:
+            return
+        import openai  # noqa: PLC0415 — lazy import (optional `llm` extra)
+
+        self._client = openai.OpenAI(api_key=self._api_key)
 
     def generate(
         self,
@@ -359,6 +371,7 @@ class OpenAIClient(LLMClient):
         tools: Optional[list[dict]] = None,
         **kwargs: Any,
     ) -> LLMResponse:
+        self._ensure_client()
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": _messages_to_openai(messages),
