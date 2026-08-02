@@ -113,6 +113,28 @@ codingkit run "..."                         # delete_file 不再出现在工具�
 codingkit web
 ```
 
+## 支持的 LLM 提供商
+
+CodingKit 通过模型名**前缀**路由到对应 provider。除 Anthropic（自有 SDK）外，DeepSeek / GLM / Kimi / MiniMax / Qwen 均走 OpenAI 兼容协议，复用同一个 `OpenAIClient`（仅 `base_url` 不同）。
+
+| 前缀 | Provider | base_url | 示例模型 |
+|------|----------|----------|---------|
+| `claude` | Anthropic | （Anthropic SDK） | `claude-sonnet-5` `claude-opus-5` `claude-haiku-4-5` |
+| `gpt` / `o1` / `o3` / `o4` | OpenAI | `api.openai.com` | `gpt-4o` `gpt-4o-mini` `o1` `o3-mini` |
+| `deepseek` | DeepSeek | `api.deepseek.com/v1` | `deepseek-chat` `deepseek-reasoner` |
+| `glm` | 智谱 GLM | `open.bigmodel.cn/api/paas/v4` | `glm-4.6` `glm-4.5` `glm-4-plus` `glm-4-flash` |
+| `kimi` / `moonshot` | Moonshot Kimi | `api.moonshot.cn/v1` | `moonshot-v1-32k` `moonshot-v1-128k` `kimi-k2` |
+| `minimax` | MiniMax | `api.minimax.chat/v1` | `MiniMax-M1` `minimax-text-01` `abab6.5s-chat` |
+| `qwen` | 通义千问 (DashScope) | `dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-max` `qwen-plus` `qwen-turbo` `qwen3-235b-a22b` |
+| `mock` | 测试用 | 无网络 | `mock` |
+
+```bash
+codingkit config model list          # 查看全部可选模型
+codingkit config model set glm-4.6   # 设默认，按前缀路由
+```
+
+> 路由按前缀匹配，所以 provider 新发的模型名（只要保留前缀）无需改代码即可使用。`codingkit config model set` 的大小写不敏感于前缀，但模型名本身会原样传给 provider。
+
 ## 凭据安全配置
 
 CodingKit **绝不**把 API Key 写入源码、Git 历史、日志或终端 history。Key 通过独立的凭据子系统管理（详见 `SPEC.md §4.2` 威胁模型）。
@@ -163,7 +185,7 @@ src/codingkit/
 └── web/           # FastAPI 后端 + WebSocket
 
 webui/             # React 前端（Vite + TypeScript）
-tests/             # 343 个测试（全部使用 MockLLMClient，不依赖真实 LLM）
+tests/             # 364 个测试（全部使用 MockLLMClient，不依赖真实 LLM）
 demo/              # 3 个确定性演示脚本
 ```
 
@@ -185,13 +207,14 @@ demo/              # 3 个确定性演示脚本
 - **Docker 镜像**需目标机已安装 Docker；容器内对宿主文件系统的读写需通过 `-v` 挂载卷。
 - **向量记忆为可选依赖**：`pip install codingkit[memory]` 安装 ChromaDB；缺失时 `MemoryManager` 自动降级到内存存储（跨会话记忆不持久化）。
 - **LLM SDK 为可选依赖**：`pip install codingkit[llm]` 安装 `anthropic` / `openai`；只跑 CLI 的 `config`/`session`/`tool` 子命令或跑测试（`MockLLMClient`）无需安装。
+- **国产 provider 走 OpenAI 兼容协议**：DeepSeek / GLM / Kimi / MiniMax / Qwen 复用 `OpenAIClient`，仅 `base_url` 不同，无需额外 SDK。但各家对 OpenAI 风格 `tools`（function-calling）的支持程度不一——harness 始终以 OpenAI 格式发送工具定义，不支持 function-calling 的 provider 会在运行时返回 provider 错误（不会静默降级）。
 - **WebUI 默认绑定 `127.0.0.1`**，不开放公网；如需远程访问请自行反代并加鉴权。
 - **平台**：开发与测试在 Linux / macOS / Windows 上进行；CI 矩阵覆盖 Python 3.11 / 3.12（`ubuntu-latest`）。
 
 ## 测试
 
 ```bash
-pytest tests/ -v        # 343 个测试全部通过
+pytest tests/ -v        # 364 个测试全部通过
 python demo/run_all_demo.sh  # 运行演示脚本
 ```
 

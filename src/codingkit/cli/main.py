@@ -402,11 +402,9 @@ config_app.add_typer(model_app, name="model")
 @model_app.command("list")
 def model_list() -> None:
     """List available LLM models."""
-    models = {
-        "Anthropic Claude": ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5"],
-        "OpenAI": ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"],
-        "Mock (testing)": ["mock"],
-    }
+    from codingkit.core.llm_factory import list_known_models
+
+    models = list_known_models()
     typer.echo("Available models:")
     for provider, provider_models in models.items():
         typer.echo(f"  {provider}:")
@@ -414,6 +412,7 @@ def model_list() -> None:
             typer.echo(f"    • {m}")
     typer.echo()
     typer.echo("Use `codingkit config model set <name>` to set the default.")
+    typer.echo("Routing is by prefix, so a provider's newer model names also work.")
 
 
 @model_app.command("set")
@@ -421,11 +420,15 @@ def model_set(
     model_name: str = typer.Argument(..., help="Model name to set as default"),
 ) -> None:
     """Set the default LLM model (persisted to .codingkit/config.yaml)."""
-    known_prefixes = ("claude", "gpt", "o1", "o3", "o4", "mock")
-    if not model_name.startswith(known_prefixes):
+    from codingkit.core.llm_factory import known_prefixes
+
+    # Prefix match is case-insensitive: providers use mixed-case model
+    # names (e.g. ``MiniMax-M1``) but the factory lowercases internally.
+    lowered = model_name.strip().lower()
+    if not lowered.startswith(known_prefixes()):
         typer.echo(
             f"Warning: '{model_name}' is not a recognised model prefix. "
-            f"Known prefixes: {', '.join(known_prefixes)}",
+            f"Known prefixes: {', '.join(known_prefixes())}",
             err=True,
         )
         raise typer.Exit(1)

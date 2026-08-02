@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from codingkit.cli.main import app
@@ -53,6 +54,33 @@ class TestConfigModelSetPersists:
         assert result.exit_code == 0
         cfg = (tmp_path / ".codingkit" / "config.yaml").read_text(encoding="utf-8")
         assert "default_model: claude-haiku-4-5" in cfg
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "deepseek-chat",
+            "glm-4.6",
+            "kimi-k2",
+            "moonshot-v1-32k",
+            "MiniMax-M1",
+            "qwen-max",
+        ],
+    )
+    def test_chinese_provider_models_accepted(self, tmp_path: Path, monkeypatch, model: str) -> None:
+        """Each OpenAI-compatible Chinese provider prefix is accepted and persisted."""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["config", "model", "set", model])
+        assert result.exit_code == 0, result.output
+        cfg = (tmp_path / ".codingkit" / "config.yaml").read_text(encoding="utf-8")
+        assert f"default_model: {model}" in cfg
+
+    def test_model_list_shows_all_provider_groups(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["config", "model", "list"])
+        assert result.exit_code == 0
+        for label in ("Anthropic Claude", "OpenAI", "DeepSeek", "GLM", "Kimi", "MiniMax", "Qwen"):
+            assert label in result.output
+
 
 
 # ---------------------------------------------------------------------------

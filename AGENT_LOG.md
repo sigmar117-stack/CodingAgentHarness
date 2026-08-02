@@ -242,15 +242,30 @@
 
 ---
 
+## 2026-08-02 — Phase I：接入国产 LLM provider
+
+### Task: 支持 DeepSeek / GLM / Kimi / MiniMax / Qwen 五家 provider
+
+| 字段 | 内容 |
+|------|------|
+| **Superpowers 技能** | `writing-plans` → `test-driven-development` |
+| **触发** | 实测时 `codingkit config model set deepseek-v4-flash` 被拒："not a recognised model prefix"。根因两层：CLI 的 `known_prefixes` 与 `llm_factory` 都只认 `claude/gpt/o1/o3/o4/mock`，且 `OpenAIClient` 硬编码 `openai.OpenAI(api_key=...)` 不接受 `base_url`，无法指向第三方 endpoint |
+| **关键修改** | ① `OpenAIClient.__init__` 增加 `base_url: Optional[str]`，`_ensure_client` 透传给 `openai.OpenAI(api_key=..., base_url=...)`（None 时 SDK 默认 OpenAI，完全向后兼容）② `llm_factory.py` 引入 `PROVIDERS` 表（每条 `(prefixes, label, base_url, models)`），按前缀路由到 `OpenAIClient(base_url=...)`；Kimi 同时认 `kimi` / `moonshot` 两个前缀；导出 `known_prefixes()` / `list_known_models()` 作为 CLI 的单一数据源 ③ `cli/main.py` 的 `model_set` 前缀检查改为大小写不敏感（provider 模型名大小写不一，如 `MiniMax-M1`），`model_list` 目录与 `known_prefixes` 全部从工厂派生，消除硬编码 ④ 测试：`test_llm_client.py` 加 14 个用例（10 参数化 provider 路由 + base_url 透传/省略 + 未知前缀 ValueError），`test_fixes.py` 加 7 个 CLI 验收用例（每家 provider 各一个 + 目录显示 8 组） |
+| **验证** | 全量 `pytest tests/` → **364 passed**（原 343 + 新增 21），`ruff check` 全过。CLI 烟测：5 家 provider 模型均可 `config model set` 并持久化；任意 `deepseek-v4-flash` 因前缀路由也被接受；未知 `llama-3` 仍诚实拒绝；`config model list` 显示 8 个 provider 组 |
+| **人工干预** | 是。需求由人工提出（接入 5 家国产 provider），实现与测试由人工编写，非 subagent 产出 |
+| **教训** | 五家国产 provider 都走 OpenAI 兼容协议，所以正确做法是"一个可配置 `base_url` 的 `OpenAIClient` + 前缀→endpoint 路由表"，而不是写 5 个 client 类——复用比新增更值钱。前缀路由（而非模型名白名单）让 provider 新发模型无需改代码即可用，符合"机制要面向未来扩展"的取向。但各家对 OpenAI `tools`（function-calling）支持程度不一，harness 始终发 OpenAI 格式工具定义，不支持的 provider 会在运行时报错而非静默降级——诚实优于假装兼容 |
+
+---
+
 ## 统计数据
 
 | 指标 | 数值 |
 |------|------|
-| **总 commit 数** | 35（含 6 个 merge commit） |
+| **总 commit 数** | 38（含 6 个 merge commit） |
 | **总 PR 数** | 6 |
-| **总测试数** | 343（全部通过，不依赖真实 LLM） |
+| **总测试数** | 364（全部通过，不依赖真实 LLM） |
 | **CLI 命令数** | 19（SPEC §3.1 的 18 条 + `config status`） |
 | **subagent worktree 数** | 4（冷启动 + T2.2 + T2.3 + T3.1） |
 | **人工 PR worktree 数** | 4（WebUI 后端/前端/分发/文档） |
-| **人工干预次数** | 3（pyproject.toml 警告过滤 + .gitignore 前端排除 + 审计修复轮） |
+| **人工干预次数** | 4（pyproject.toml 警告过滤 + .gitignore 前端排除 + 审计修复轮 + 国产 provider 接入） |
 | **冷启动验证** | 4 个 task，暴露 1 个 block 级别 SPEC 缺陷 |

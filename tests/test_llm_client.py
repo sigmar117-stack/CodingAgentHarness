@@ -99,6 +99,81 @@ def test_factory_invalid_model_raises() -> None:
         create_llm_client("llama-3-70b", api_key="dummy")
 
 
+# --- OpenAI-compatible Chinese providers (DeepSeek/GLM/Kimi/MiniMax/Qwen) ---
+
+
+@pytest.mark.parametrize(
+    "model,expected_base_url",
+    [
+        ("deepseek-chat", "https://api.deepseek.com/v1"),
+        ("deepseek-reasoner", "https://api.deepseek.com/v1"),
+        ("glm-4.6", "https://open.bigmodel.cn/api/paas/v4"),
+        ("glm-4-flash", "https://open.bigmodel.cn/api/paas/v4"),
+        ("kimi-k2", "https://api.moonshot.cn/v1"),
+        ("moonshot-v1-32k", "https://api.moonshot.cn/v1"),
+        ("MiniMax-M1", "https://api.minimax.chat/v1"),
+        ("minimax-text-01", "https://api.minimax.chat/v1"),
+        ("qwen-max", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        ("qwen3-235b-a22b", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    ],
+)
+def test_factory_routes_openai_compatible_provider(model: str, expected_base_url: str) -> None:
+    """Each provider prefix routes to an OpenAIClient carrying the right base_url."""
+    client = create_llm_client(model, api_key="dummy")
+    assert isinstance(client, OpenAIClient)
+    assert client._base_url == expected_base_url
+
+
+def test_factory_openai_has_no_base_url() -> None:
+    """Stock OpenAI gpt* must NOT carry a base_url (SDK default endpoint)."""
+    client = create_llm_client("gpt-4o", api_key="dummy")
+    assert isinstance(client, OpenAIClient)
+    assert client._base_url is None
+
+
+def test_factory_invalid_provider_prefix_raises() -> None:
+    with pytest.raises(ValueError, match="Unknown model"):
+        create_llm_client("ernie-4", api_key="dummy")
+
+
+def test_openai_ensure_client_threads_base_url(monkeypatch) -> None:
+    """_ensure_client passes base_url through to openai.OpenAI(...)."""
+    captured: dict = {}
+
+    class _FakeOpenAISDK:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    # Stub the lazily-imported openai module so no real SDK is needed.
+    import sys
+
+    monkeypatch.setitem(sys.modules, "openai", type("openai_mod", (), {"OpenAI": _FakeOpenAISDK}))
+
+    client = OpenAIClient(model="glm-4.6", api_key="k", base_url="https://open.bigmodel.cn/api/paas/v4")
+    client._ensure_client()
+    assert captured["api_key"] == "k"
+    assert captured["base_url"] == "https://open.bigmodel.cn/api/paas/v4"
+
+
+def test_openai_ensure_client_omits_base_url_when_none(monkeypatch) -> None:
+    """When base_url is None the SDK call must not include the key (SDK default)."""
+    captured: dict = {}
+
+    class _FakeOpenAISDK:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "openai", type("openai_mod", (), {"OpenAI": _FakeOpenAISDK}))
+
+    client = OpenAIClient(model="gpt-4o", api_key="k")
+    client._ensure_client()
+    assert captured["api_key"] == "k"
+    assert "base_url" not in captured
+
+
+
 # --- Translation: unified -> Anthropic -------------------------------------
 
 

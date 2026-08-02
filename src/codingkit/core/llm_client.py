@@ -343,16 +343,24 @@ class ClaudeClient(LLMClient):
 
 
 class OpenAIClient(LLMClient):
-    """OpenAI client with native function-calling support."""
+    """OpenAI client with native function-calling support.
+
+    ``base_url`` lets the same adapter target any OpenAI-compatible
+    provider (DeepSeek, GLM/Zhipu, Kimi/Moonshot, MiniMax, Qwen/DashScope).
+    When ``None`` the SDK defaults to OpenAI's own endpoint — fully backward
+    compatible.
+    """
 
     def __init__(
         self,
         model: str,
         api_key: Optional[str] = None,
         client: Any = None,
+        base_url: Optional[str] = None,
     ) -> None:
         self._model = model
         self._api_key = api_key
+        self._base_url = base_url
         # client is None → lazy import on first generate() so the class
         # can be instantiated without the optional `llm` extras installed.
         self._client = client
@@ -363,7 +371,10 @@ class OpenAIClient(LLMClient):
             return
         import openai  # noqa: PLC0415 — lazy import (optional `llm` extra)
 
-        self._client = openai.OpenAI(api_key=self._api_key)
+        kwargs: dict[str, Any] = {"api_key": self._api_key}
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
+        self._client = openai.OpenAI(**kwargs)
 
     def generate(
         self,
