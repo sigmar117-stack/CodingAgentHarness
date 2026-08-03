@@ -34,6 +34,8 @@ without an API key.
 from __future__ import annotations
 
 import json
+import os
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -239,6 +241,48 @@ def _tools_to_openai(tools: list[dict]) -> list[dict]:
     ]
 
 
+def _dump_openai_payload(payload: dict, exc: Exception) -> None:
+    """Print the failing request payload to stderr (CODINGKIT_DEBUG=1).
+
+    Used to diagnose provider 4xx errors that stem from message-shape
+    issues. The API key is never in this payload, so nothing sensitive
+    is logged.
+    """
+    print("\n========== CODINGKIT_DEBUG: failing OpenAI payload ==========", file=sys.stderr)
+    print(f"model: {payload.get('model')!r}", file=sys.stderr)
+    msgs = payload.get("messages", [])
+    print(f"messages ({len(msgs)}):", file=sys.stderr)
+    for i, m in enumerate(msgs):
+        role = m.get("role")
+        if role == "tool":
+            print(f"  [{i}] tool      tool_call_id={m.get('tool_call_id')!r} content={str(m.get('content'))[:50]!r}", file=sys.stderr)
+        elif role == "assistant" and m.get("tool_calls"):
+            tcs = [(tc["function"]["name"], tc.get("id")) for tc in m["tool_calls"]]
+            print(f"  [{i}] assistant tool_calls={tcs} content={m.get('content')!r}", file=sys.stderr)
+        else:
+            print(f"  [{i}] {role:9} content={str(m.get('content'))[:70]!r}", file=sys.stderr)
+    print(f"tools: {len(payload.get('tools', []))}", file=sys.stderr)
+    print(f"exception: {type(exc).__name__}: {exc}", file=sys.stderr)
+    print("==============================================================\n", file=sys.stderr)
+
+    # Persist the full payload to disk for reliable capture even if stderr
+    # scrolled away. The API key is never in this payload.
+    try:
+        from pathlib import Path
+
+        out_path = Path.cwd() / ".codingkit_debug_payload.json"
+        snapshot = {
+            "model": payload.get("model"),
+            "messages": payload.get("messages", []),
+            "tools": payload.get("tools", []),
+            "exception": f"{type(exc).__name__}: {exc}",
+        }
+        out_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[CODINGKIT_DEBUG] full payload written to: {out_path}", file=sys.stderr)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ---------------------------------------------------------------------------
 # ClaudeClient (Anthropic)
 # ---------------------------------------------------------------------------
@@ -391,7 +435,12 @@ class OpenAIClient(LLMClient):
             payload["tools"] = _tools_to_openai(tools)
         payload.update(kwargs)
 
-        raw = self._client.chat.completions.create(**payload)
+        try:
+            raw = self._client.chat.completions.create(**payload)
+        except Exception as exc:
+            if os.environ.get("CODINGKIT_DEBUG"):
+                _dump_openai_payload(payload, exc)
+            raise
         return self._parse_response(raw, self._model)
 
     @staticmethod

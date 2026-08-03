@@ -45,3 +45,8 @@ logs/
 # --- Frontend build ---
 webui/node_modules/
 webui/dist/
+
+# --- Local diagnostics (may contain secrets) ---
+diag*.py
+*.local.py
+.codingkit_debug_payload.json

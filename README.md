@@ -207,7 +207,9 @@ demo/              # 3 个确定性演示脚本
 - **Docker 镜像**需目标机已安装 Docker；容器内对宿主文件系统的读写需通过 `-v` 挂载卷。
 - **向量记忆为可选依赖**：`pip install codingkit[memory]` 安装 ChromaDB；缺失时 `MemoryManager` 自动降级到内存存储（跨会话记忆不持久化）。
 - **LLM SDK 为可选依赖**：`pip install codingkit[llm]` 安装 `anthropic` / `openai`；只跑 CLI 的 `config`/`session`/`tool` 子命令或跑测试（`MockLLMClient`）无需安装。
+- **配置按工作目录生效（项目级，非全局）**：`.codingkit/config.yaml`、`default_model`、`disabled_tools` 等都存在**当前工作目录**的 `.codingkit/` 下。在 A 目录 `codingkit config model set ...` 后，在 B 目录 `codingkit run` 读不到——B 会用默认模型。务必在**你要跑任务的目录**里配置，或在每个常用目录都设一遍。
 - **国产 provider 走 OpenAI 兼容协议**：DeepSeek / GLM / Kimi / MiniMax / Qwen 复用 `OpenAIClient`，仅 `base_url` 不同，无需额外 SDK。但各家对 OpenAI 风格 `tools`（function-calling）的支持程度不一——harness 始终以 OpenAI 格式发送工具定义，不支持 function-calling 的 provider 会在运行时返回 provider 错误（不会静默降级）。
+- **真实 provider 偶发 400（非确定性）**：个别 OpenAI 兼容 provider 在特定多轮消息序列下可能返回 `Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`（harness 的统一消息格式转换在极少数模式下与某 provider 的严格校验不兼容）。受 LLM 回复随机性影响，难以稳定复现。设置 `CODINGKIT_DEBUG=1` 可在请求被拒时把完整 payload 落盘到 `.codingkit_debug_payload.json`，便于定位。
 - **WebUI 默认绑定 `127.0.0.1`**，不开放公网；如需远程访问请自行反代并加鉴权。
 - **平台**：开发与测试在 Linux / macOS / Windows 上进行；CI 矩阵覆盖 Python 3.11 / 3.12（`ubuntu-latest`）。
 
@@ -217,6 +219,21 @@ demo/              # 3 个确定性演示脚本
 pytest tests/ -v        # 364 个测试全部通过
 python demo/run_all_demo.sh  # 运行演示脚本
 ```
+
+## 调试真实 provider
+
+当 `codingkit run` 对真实 provider 报 4xx 时，设置环境变量可在请求被拒时捕获完整 payload（messages + tools，**不含 API key**）：
+
+```bash
+# PowerShell
+$env:CODINGKIT_DEBUG=1
+codingkit run "..."
+
+# bash
+CODINGKIT_DEBUG=1 codingkit run "..."
+```
+
+请求被拒时，payload 会打印到 stderr 并写入运行目录的 `.codingkit_debug_payload.json`，便于离线分析消息序列问题。
 
 ## 许可证
 

@@ -257,15 +257,32 @@
 
 ---
 
+## 2026-08-03 — Phase J：真实 LLM 端到端验证
+
+### Task: 对真实 DeepSeek 跑通 harness + 已知非确定性 400 定位
+
+| 字段 | 内容 |
+|------|------|
+| **Superpowers 技能** | `requesting-code-review`（实测驱动） |
+| **触发** | Phase I 接入五家国产 provider 后，需实证 harness 在真实 LLM 下真的能转（之前所有运行都是 MockLLMClient，从未对真实 provider 跑过） |
+| **过程** | 配 DeepSeek key + `deepseek-v4-flash` 模型后，依次撞见三类错并逐一定位：① 401 `Authentication Fails, Your api key: ****FjJy is invalid` → key 失效，重录 ② 403 `type: forbidden / Request not allowed` → **非 key 问题，是 config 在错的目录**：`codingkit config status` 在 `D:\zuomian\test` 显示 `deepseek-v4-flash`，但 `codingkit run` 在项目目录跑，那边 `.codingkit/config.yaml` 还是默认 `claude-sonnet-5` → 工厂路由到 `ClaudeClient` → 把 DeepSeek key 发给 Anthropic → Anthropic 回 403。`.codingkit/config.yaml` 是按工作目录生效的（项目级配置），不是全局——这是踩坑点 ③ 400 `Messages with role 'tool' must be a response to a preceding message with 'tool_calls'` → DeepSeek 真实返回，**非确定性**（不同任务、不同 LLM 回复模式，只有特定消息序列触发），两次成功运行（排序算法 4 轮、multiply+测试 4 轮）未触发，未能复现捕获 |
+| **关键修改** | ① 给 `OpenAIClient.generate` 加 `CODINGKIT_DEBUG=1` 环境变量门控的调试钩子：请求被 provider 拒时，把完整 payload（messages+tools，**不含 key**）打印到 stderr 并写入运行目录 `.codingkit_debug_payload.json`，作为那个非确定性 400 的唯一可靠捕获手段 ② 诊断期间写过的 `diag*.py` scratch 脚本（含真实 key，已 gitignore）在收尾时删除 ③ 加 `.gitignore` 条目：`diag*.py` / `*.local.py` / `.codingkit_debug_payload.json` |
+| **验证** | 真实 DeepSeek 端到端跑通两次：a) "写一个高效排序算法" → 3 轮 2 工具调用，生成 `efficient_sort.py`（三数取中快排 + 插入排序阈值 + Hoare 分区 + 尾递归优化）并通过测试 b) "Add a multiply function to calc.py with tests" → 4 轮 4 工具调用，生成 `multiply` 函数 + 5 个测试全过。`pytest tests/` 仍 364 passed，`ruff` 全过。**harness 的反馈闭环、工具调度、状态机在真实 provider 下实证可用**——补上了 Phase H 之前"从未对真实 provider 跑过"的豁免项 |
+| **已知未解决** | DeepSeek 偶发的 400 `tool 消息前无 tool_calls`：非确定性，MockLLMClient 复现的序列均合法，两次真实成功运行也未触发，根因未定位。疑似 `OpenAIClient` 在某类消息模式（如 LLM 同时返回 text + tool_calls、或多 tool_call 拆分）下产出的序列被 DeepSeek 拒。`CODINGKIT_DEBUG=1` 钩子已就位，待下次复现时捕获 payload 后定点修 `_messages_to_openai` |
+| **人工干预** | 是。实测 + 诊断 + 调试钩子由人工驱动 |
+| **教训** | **"config 是项目级、按目录生效"** 这条没在文档里讲清楚，导致 403 误判为账号问题排查了很久。配置作用域（全局 vs 项目级）必须在 README 显式说明。另外：真实 provider 的非确定性错误（受温度/回复模式影响）极难靠重试复现，必须有"出错即落盘 payload"的可观测钩子才能定位——这正是 §A.4-C"机制可观测"在排障场景的延伸。诚实记录"已实证可用 + 有一个未复现的非确定性 bug + 有捕获手段"，比假装全绿更符合本作业的红线 |
+
+---
+
 ## 统计数据
 
 | 指标 | 数值 |
 |------|------|
-| **总 commit 数** | 38（含 6 个 merge commit） |
+| **总 commit 数** | 40（含 6 个 merge commit） |
 | **总 PR 数** | 6 |
 | **总测试数** | 364（全部通过，不依赖真实 LLM） |
 | **CLI 命令数** | 19（SPEC §3.1 的 18 条 + `config status`） |
 | **subagent worktree 数** | 4（冷启动 + T2.2 + T2.3 + T3.1） |
 | **人工 PR worktree 数** | 4（WebUI 后端/前端/分发/文档） |
-| **人工干预次数** | 4（pyproject.toml 警告过滤 + .gitignore 前端排除 + 审计修复轮 + 国产 provider 接入） |
+| **人工干预次数** | 5（pyproject.toml 警告过滤 + .gitignore 前端排除 + 审计修复轮 + 国产 provider 接入 + 真实 LLM 实测定位） |
 | **冷启动验证** | 4 个 task，暴露 1 个 block 级别 SPEC 缺陷 |
