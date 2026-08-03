@@ -7,7 +7,7 @@
 - **反馈闭环** — 当 agent 生成的代码测试失败时，自动分类失败原因并执行差异化修正策略，而非简单重试
 - **可观测状态机** — 修正过程全程可见：当前策略、切换原因、阈值上报，用户可随时干预
 - **治理护栏** — 危险操作（删除文件、执行命令等）自动拦截，支持 y/n/m 三种审批决策
-- **双界面** — CLI（19 条命令）+ WebUI（实时看板/交互/历史）
+- **双界面** — CLI（20 条命令）+ WebUI（实时看板/交互/历史）
 - **纯确定性测试** — 所有核心机制使用 MockLLMClient，无需真实 LLM 即可验证
 
 ## 快速安装
@@ -40,7 +40,7 @@ docker build -t codingkit .
 docker run -it -v ~/.codingkit:/root/.codingkit -v "$PWD:/workspace" codingkit --help
 ```
 
-### 完整命令参考（19 条）
+### 完整命令参考（20 条）
 
 每条命令都可用 `codingkit <command> --help` 查看详细帮助。
 
@@ -55,15 +55,16 @@ docker run -it -v ~/.codingkit:/root/.codingkit -v "$PWD:/workspace" codingkit -
 | `cancel` | `codingkit cancel` | `run` 在前台运行，无后台任务可取消——命令会诚实说明这一点 |
 | `version` | `codingkit version` | 显示版本号 |
 
-#### config 子命令（7 条）
+#### config 子命令（8 条）
 
 | 命令 | 用法 | 说明 |
 |------|------|------|
-| `config status` | `codingkit config status` | 显示当前配置（模型、凭据后端、禁用工具等） |
+| `config status` | `codingkit config status` | 显示当前配置（模型、凭据后端、max_tokens 等） |
 | `config method` | `codingkit config method <keychain\|file>` | 切换凭据存储后端，持久化到 `config.yaml` |
 | `config key set` | `codingkit config key set` | 录入/覆盖 API Key（隐藏输入，不落盘明文） |
 | `config key show` | `codingkit config key show` | 只显示"已配置/未配置"，**绝不回显明文** |
 | `config key delete` | `codingkit config key delete` | 删除已配置的 Key（需确认） |
+| `config max-tokens` | `codingkit config max-tokens <N>` | 设置 LLM 最大输出 token 数（默认 4096），持久化到 `config.yaml` |
 | `config model list` | `codingkit config model list` | 列出可选 LLM 模型 |
 | `config model set` | `codingkit config model set <model_name>` | 设默认模型，持久化到 `config.yaml` |
 
@@ -83,7 +84,7 @@ docker run -it -v ~/.codingkit:/root/.codingkit -v "$PWD:/workspace" codingkit -
 | `tool enable` | `codingkit tool enable <tool_name>` | 启用某工具，持久化到 `config.yaml` |
 | `tool disable` | `codingkit tool disable <tool_name>` | 禁用某工具；禁用后从 LLM 工具定义中剔除、执行时拒绝（优先于护栏审批） |
 
-> SPEC §3.1 要求 18 条命令，本项目额外提供 `config status` 共 19 条。
+> SPEC §3.1 要求 18 条命令，本项目额外提供 `config status` 和 `config max-tokens` 共 20 条。
 
 ### 典型工作流
 
@@ -176,7 +177,7 @@ docker run -it -v ~/.codingkit:/root/.codingkit -v "$PWD:/workspace" codingkit \
 
 ```
 src/codingkit/
-├── cli/           # CLI 入口（Typer，19 条命令）
+├── cli/           # CLI 入口（Typer，20 条命令）
 ├── core/          # 核心：AgentLoop、LLM 抽象、会话管理、上下文构建
 ├── tools/         # 10 个工具（读/写/编辑/执行/搜索/测试/...）
 ├── governance/    # 治理护栏 + HITL 审批

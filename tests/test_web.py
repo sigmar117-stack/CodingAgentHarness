@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 from codingkit.web.server import create_app
 
+from codingkit.web.routes import reset_state
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -18,7 +20,13 @@ from codingkit.web.server import create_app
 
 @pytest.fixture
 def client() -> TestClient:
-    """Create a fresh TestClient for each test."""
+    """Create a fresh TestClient for each test.
+
+    Resets the module-level state in ``routes.py`` so that a previous test's
+    background loop does not leak into the next test (the root cause of the
+    409 Conflict failures).
+    """
+    reset_state()
     app = create_app()
     with TestClient(app) as c:
         yield c
@@ -80,14 +88,20 @@ class TestRunTask:
         """POST /api/run is allowed again after the first task completes.
 
         With MockLLMClient, the background task completes almost instantly,
-        so a second run should succeed.
+        so a second run should succeed.  We poll /api/status rather than
+        sleep() so the test is fast on an unloaded machine and reliable on
+        a slow one.
         """
         resp = client.post("/api/run", json={"task": "First task"})
         assert resp.status_code == 200
 
-        # Wait briefly for the first task to complete
-        import time
-        time.sleep(0.2)
+        # Poll until the background task completes (or we give up)
+        for _ in range(50):
+            import time
+            time.sleep(0.05)
+            status = client.get("/api/status").json()
+            if status.get("state") in ("completed", "idle"):
+                break
 
         resp2 = client.post("/api/run", json={"task": "Second task"})
         assert resp2.status_code == 200

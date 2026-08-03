@@ -393,6 +393,14 @@ class OpenAIClient(LLMClient):
     provider (DeepSeek, GLM/Zhipu, Kimi/Moonshot, MiniMax, Qwen/DashScope).
     When ``None`` the SDK defaults to OpenAI's own endpoint — fully backward
     compatible.
+
+    Args:
+        model: The model name (e.g. ``gpt-4o``).
+        api_key: Optional API key.  Falls back to the ``OPENAI_API_KEY``
+            environment variable when ``None``.
+        client: Optional pre-configured ``openai.OpenAI`` instance.
+        base_url: Optional base URL for OpenAI-compatible providers.
+        max_tokens: Maximum output tokens.  Default 4096.
     """
 
     def __init__(
@@ -401,10 +409,12 @@ class OpenAIClient(LLMClient):
         api_key: Optional[str] = None,
         client: Any = None,
         base_url: Optional[str] = None,
+        max_tokens: int = 4096,
     ) -> None:
         self._model = model
         self._api_key = api_key
         self._base_url = base_url
+        self._max_tokens = max_tokens
         # client is None → lazy import on first generate() so the class
         # can be instantiated without the optional `llm` extras installed.
         self._client = client
@@ -430,6 +440,7 @@ class OpenAIClient(LLMClient):
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": _messages_to_openai(messages),
+            "max_tokens": kwargs.pop("max_tokens", self._max_tokens),
         }
         if tools:
             payload["tools"] = _tools_to_openai(tools)

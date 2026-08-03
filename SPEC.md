@@ -55,6 +55,7 @@ CodingKit 要解决的核心问题是：**当 agent 生成的代码测试失败�
 | `codingkit config key show` | 查看 Key 状态 | 无 | 显示"已配置"或"未配置"，不回显明文 | — | — |
 | `codingkit config key delete` | 清除 Key | 确认提示 | 提示"已清除" | 无 Key 时提示"未配置" | 删除失败 → 报错 |
 | `codingkit config method keychain/file` | 切换凭据存储方式 | 存储方式名称 | 提示"切换成功" | 不支持的存储方式 → 提示可选列表 | 切换失败 → 报错 |
+| `codingkit config max-tokens <N>` | 设置 LLM 最大输出 token 数 | token 数量（整数） | 提示"已设置" | 值 < 1 → 提示错误 | 保存配置失败 → 报错 |
 | `codingkit config model list` | 查看可用模型 | 无 | 列出 Anthropic 和 OpenAI 的可用模型列表 | — | 网络不通时显示缓存的模型列表 |
 | `codingkit config model set <name>` | 切换默认模型 | 模型名称 | 提示"已设为默认" | 模型名称不存在 → 提示可选列表 | 保存配置失败 → 报错 |
 | `codingkit session list` | 查看历史会话列表 | 无 | 显示会话 ID、创建时间、状态、任务摘要 | 无会话时提示"暂无记录" | — |

@@ -38,6 +38,7 @@ _DEFAULT_CONFIG: dict[str, str] = {
     "default_model": "claude-sonnet-5",
     "credential_method": "keychain",
     "max_retries": "6",
+    "max_tokens": "4096",
 }
 
 
@@ -107,7 +108,15 @@ def _build_llm_client():
     plan-only mode).  When no key is available — e.g. a fresh checkout or the
     test environment — falls back to ``MockLLMClient`` so the loop still runs.
     """
-    model = _load_config().get("default_model", "claude-sonnet-5")
+    cfg = _load_config()
+    model = cfg.get("default_model", "claude-sonnet-5")
+
+    # Read max_tokens from config, parse as int, fall back to 4096
+    try:
+        max_tokens = int(cfg.get("max_tokens", "4096"))
+    except (ValueError, TypeError):
+        max_tokens = 4096
+
     try:
         store = _get_credential_store()
         key = store.get("api_key")
@@ -122,7 +131,7 @@ def _build_llm_client():
     from codingkit.core.llm_factory import create_llm_client
 
     try:
-        return create_llm_client(model, api_key=key), True
+        return create_llm_client(model, api_key=key, max_tokens=max_tokens), True
     except Exception:
         return MockLLMClient(model="mock"), False
 
@@ -191,6 +200,7 @@ def init() -> None:
         "default_model: claude-sonnet-5\n"
         "credential_method: keychain\n"
         "max_retries: 6\n"
+        "max_tokens: 4096\n"
     )
     typer.echo("✅ Initialized CodingKit project in .codingkit/")
 
@@ -302,6 +312,7 @@ def config_status() -> None:
     typer.echo(f"  default_model: {cfg.get('default_model', 'claude-sonnet-5')}")
     typer.echo(f"  credential_method: {cfg.get('credential_method', 'keychain')}")
     typer.echo(f"  max_retries: {cfg.get('max_retries', 6)}")
+    typer.echo(f"  max_tokens: {cfg.get('max_tokens', '4096')}")
 
 
 # ── config key ────────────────────────────────────────────────────────────
@@ -391,6 +402,28 @@ def method(
     cfg["credential_method"] = name
     _save_config(cfg)
     typer.echo(f"✅ Credential method set to '{name}' (persisted to .codingkit/config.yaml).")
+
+
+# ── config max_tokens ────────────────────────────────────────────────────────
+
+
+@config_app.command("max-tokens")
+def config_max_tokens(
+    tokens: int = typer.Argument(..., help="Maximum output tokens for LLM responses (e.g. 4096)"),
+) -> None:
+    """Set the maximum output tokens for LLM responses.
+
+    This value is passed as ``max_tokens`` to the LLM provider.  Default is
+    4096.  Persisted to ``.codingkit/config.yaml`` — takes effect on the next
+    ``codingkit run``.
+    """
+    if tokens < 1:
+        typer.echo("Error: max_tokens must be >= 1.", err=True)
+        raise typer.Exit(1)
+    cfg = _load_config()
+    cfg["max_tokens"] = str(tokens)
+    _save_config(cfg)
+    typer.echo(f"✅ max_tokens set to {tokens} (persisted to .codingkit/config.yaml).")
 
 
 # ── config model ──────────────────────────────────────────────────────────
@@ -576,6 +609,7 @@ def status() -> None:
     cfg = _load_config()
     typer.echo(f"  Default model: {cfg.get('default_model', 'claude-sonnet-5')}")
     typer.echo(f"  Credential method: {cfg.get('credential_method', 'keychain')}")
+    typer.echo(f"  max_tokens: {cfg.get('max_tokens', '4096')}")
 
     registry = _build_registry()
     ndis = len(registry.disabled_names())

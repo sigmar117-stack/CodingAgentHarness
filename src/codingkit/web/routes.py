@@ -63,6 +63,19 @@ _loop_lock = threading.Lock()
 #: Event for signalling cancellation.
 _cancel_event = threading.Event()
 
+
+def reset_state() -> None:
+    """Reset all module-level state to initial values.
+
+    Used by tests to avoid cross-test leakage.  Not intended for production use
+    (the WebUI runs one server at a time, so the global state is naturally
+    scoped to the server's lifetime).
+    """
+    global _current_loop, _loop_thread, _cancel_event
+    _current_loop = None
+    _loop_thread = None
+    _cancel_event = threading.Event()
+
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
@@ -164,13 +177,18 @@ def _build_web_llm():
     provider key was loaded.
     """
     model = "claude-sonnet-5"
+    max_tokens = 4096
     config_path = Path(".codingkit") / "config.yaml"
     if config_path.exists():
         for raw in config_path.read_text(encoding="utf-8").splitlines():
             line = raw.strip()
             if line.startswith("default_model:"):
                 model = line.split(":", 1)[1].strip() or model
-                break
+            elif line.startswith("max_tokens:"):
+                try:
+                    max_tokens = int(line.split(":", 1)[1].strip())
+                except (ValueError, TypeError):
+                    max_tokens = 4096
 
     key = None
     try:
@@ -185,7 +203,7 @@ def _build_web_llm():
         from codingkit.core.llm_factory import create_llm_client
 
         try:
-            return create_llm_client(model, api_key=key), True
+            return create_llm_client(model, api_key=key, max_tokens=max_tokens), True
         except Exception:
             return MockLLMClient(model="mock"), False
     return MockLLMClient(model="mock"), False
@@ -504,7 +522,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await ws_manager.connect(websocket)
 
     try:
-        # Send initial state
+        # Send initial state (always send something so the WebSocket client
+        # — and tests — always get a message on connect).
         with _loop_lock:
             if _current_loop is not None:
                 init = state_change_event(
@@ -513,7 +532,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     task=_current_loop.task,
                     current_turn=_current_loop.current_turn,
                 )
-                await websocket.send_json(init)
+            else:
+                init = state_change_event(
+                    state="idle",
+                    session_id="",
+                    task="",
+                    current_turn=0,
+                )
+            await websocket.send_json(init)
 
         # Keep connection alive — read (and discard) any messages from client
         while True:
