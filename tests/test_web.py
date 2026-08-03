@@ -9,9 +9,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from codingkit.web.server import create_app
-
 from codingkit.web.routes import reset_state
+from codingkit.web.server import create_app
 
 # ---------------------------------------------------------------------------
 # Fixtures
